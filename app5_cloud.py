@@ -46,12 +46,19 @@ if not st.session_state.authenticated:
                 # Passwort aus Secrets holen
                 correct_password = st.secrets.get("APP_PASSWORD", "")
                 
+                # DEBUG
+                st.write(f"DEBUG - Eingegebenes Passwort Länge: {len(password)}")
+                st.write(f"DEBUG - Secrets Passwort Länge: {len(correct_password)}")
+                st.write(f"DEBUG - Secrets Passwort vorhanden: {bool(correct_password)}")
+                
                 if password == correct_password:
                     st.session_state.authenticated = True
                     st.success("✅ Login erfolgreich!")
                     st.rerun()
                 else:
                     st.error("❌ Falsches Passwort!")
+                    st.error(f"DEBUG - Erwartet: '{correct_password}'")
+                    st.error(f"DEBUG - Bekommen: '{password}'")
         
         with col_b:
             if st.button("❌ Abbrechen", use_container_width=True):
