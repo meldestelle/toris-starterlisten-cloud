@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 TORIS Starterlisten - Cloud Version V2
-Übersichtliches Tab-Layout mit Publishing Status
+Multi-User Login mit Fallback
 """
 
 import streamlit as st
@@ -11,6 +11,93 @@ import shutil
 from pathlib import Path
 import tempfile
 from datetime import datetime
+
+# ============================================================================
+# PAGE CONFIG - MUSS GANZ AM ANFANG SEIN!
+# ============================================================================
+st.set_page_config(
+    page_title="TORIS Starterlisten Generator",
+    page_icon="🏇",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================================================
+# PASSWORTSCHUTZ - MULTI-USER
+# ============================================================================
+
+# Authentication State
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = "Standard"
+
+# Login Screen
+if not st.session_state.authenticated:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.title("🔒 TORIS Starterlisten")
+        st.caption("Bitte einloggen")
+        
+        # Benutzername (optional)
+        username = st.text_input(
+            "Benutzername (optional)",
+            placeholder="Leer lassen für Standard-Login",
+            help="Optional: Benutzername für spezifisches Konto"
+        )
+        
+        # Passwort
+        password = st.text_input(
+            "Passwort", 
+            type="password",
+            placeholder="Passwort eingeben"
+        )
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("🔓 Login", type="primary", use_container_width=True):
+                # Standard-Passwort (ohne Benutzername)
+                default_password = st.secrets.get("APP_PASSWORD", "")
+                
+                # User-spezifische Passwörter
+                users = st.secrets.get("users", {})
+                
+                login_successful = False
+                login_username = "Standard"
+                
+                # Fall 1: Kein Benutzername → Standard-Passwort prüfen
+                if not username or username.strip() == "":
+                    if password == default_password and default_password != "":
+                        login_successful = True
+                        login_username = "Standard"
+                
+                # Fall 2: Benutzername angegeben → User-Passwort prüfen
+                else:
+                    username_clean = username.strip().lower()
+                    if username_clean in users:
+                        if password == users[username_clean]:
+                            login_successful = True
+                            login_username = username.strip()
+                
+                # Login erfolgreich?
+                if login_successful:
+                    st.session_state.authenticated = True
+                    st.session_state.username = login_username
+                    st.success(f"✅ Login erfolgreich als {login_username}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Falsches Passwort oder Benutzername!")
+        
+        with col_b:
+            if st.button("❌ Abbrechen", use_container_width=True):
+                st.info("Zugriff verweigert")
+    
+    st.stop()
+
+# ============================================================================
+# AB HIER NUR FÜR EINGELOGGTE BENUTZER
+# ============================================================================
 
 # Session State Defaults
 if "pdf_template" not in st.session_state:
@@ -372,12 +459,6 @@ def enhance_starterlist(starterlist, comp_obj, comp_details):
 
 apply_custom_styles()
 
-st.set_page_config(
-    page_title="TORIS Starterlisten Generator",
-    page_icon="🏇",
-    layout="wide"
-)
-
 # Logo in Header
 col1, col2 = st.columns([1, 5])
 with col1:
@@ -387,7 +468,11 @@ with col1:
         st.markdown("🏇")
 with col2:
     st.title("TORIS Starterlisten Generator")
-    st.caption("PDF-Export mit Publishing Status")
+    # Zeige angemeldeten Benutzer
+    if st.session_state.get("username", "Standard") != "Standard":
+        st.caption(f"PDF-Export mit Publishing Status • 👤 Angemeldet als: {st.session_state.username}")
+    else:
+        st.caption("PDF-Export mit Publishing Status")
 
 # ============================================================================
 # SIDEBAR
