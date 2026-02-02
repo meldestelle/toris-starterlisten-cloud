@@ -247,37 +247,11 @@ def get_country_name(ioc_code):
 
 def render(starterlist: dict, filename: str):
     # Hole Abstände aus starterlist (in cm)
-    # Ausgabe-Pfad
-    # Extrahiere Prüfungsnummer und Abteilung für XXY Format
-    comp = starterlist.get("competition") or {}
-    comp_number_raw = comp.get("number") or starterlist.get("competitionNumber") or "99"
-    
-    # Extrahiere nur die Zahl aus comp_number (z.B. "14start" → "14", "5a" → "5")
-    import re
-    match = re.search(r'(\d+)', str(comp_number_raw))
-    comp_number = match.group(1) if match else "99"
-    
-    # Hole Abteilungsnummer (falls vorhanden)
-    # Prüfe erst in starterlist, dann in competition
-    division = starterlist.get("division") or starterlist.get("divisionNumber") or comp.get("division") or 0
-    
-    # Formatiere als XXY: XX = Prüfung (2-stellig), Y = Abteilung (1-stellig)
-    # Beispiele: 5 → 050, 10 → 100, 5/Abt.2 → 052, 17 → 170, "14start" → 140
-    try:
-        comp_num = int(comp_number)
-        div_num = int(division) if division else 0
-        output_filename = f"{comp_num:02d}{div_num:01d}.pdf"
-    except (ValueError, TypeError):
-        # Fallback wenn Konvertierung fehlschlägt
-        output_filename = "990.pdf"
-    
-    output_path = os.path.join("Ausgabe", output_filename)
-    os.makedirs("Ausgabe", exist_ok=True)
-    
     spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
     spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
     
     print(f"PDF LISTE DEBUG: Abstände - Seite 1 Oben: {spacing_top_cm}cm, Alle Seiten Unten: {spacing_bottom_cm}cm, Ab Seite 2 Oben: 1cm")
+    print(f"PDF LISTE DEBUG: Erstelle PDF: {filename}")
     
     top_margin_first = spacing_top_cm * 10
     top_margin_later = 1.0 * 10
@@ -311,7 +285,7 @@ def render(starterlist: dict, filename: str):
             SimpleDocTemplate.build(self, flowables)
     
     doc = ListeDocTemplate(
-        output_path,
+        filename,
         pagesize=A4,
         rightMargin=0, leftMargin=0,
         topMargin=0, bottomMargin=0
