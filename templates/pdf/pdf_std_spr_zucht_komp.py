@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_nat.py - Deutsches Design mit Flaggen
+# templates/pdf/pdf_std_spr_zucht_komp.py - Deutsches Design mit Flaggen
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
