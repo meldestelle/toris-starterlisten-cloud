@@ -311,10 +311,10 @@ def render_file_manager():
     with tab2:
         st.subheader("Template hochladen")
         uploaded_word_template = st.file_uploader(
-            "Word Template (.py Datei)",
-            type=['py'],
+            "Word Template (.py oder .docx Datei)",
+            type=['py', 'docx'],
             key=f"word_template_uploader_{st.session_state.get('word_template_upload_key', 0)}",
-            help="Python-Datei mit Word-Template-Code hochladen"
+            help="Python-Datei (.py) oder Word-Vorlage (.docx) hochladen"
         )
         
         if uploaded_word_template:
