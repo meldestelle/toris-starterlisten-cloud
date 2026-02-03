@@ -1311,7 +1311,11 @@ def render(starterlist, filename):
             else:
                 pos_label = str(position) if position else ""
             
-            judges_by_position[pos_label] = name
+            # WICHTIG: Liste statt einzelner Name (mehrere Richter pro Position!)
+            if pos_label and name:
+                if pos_label not in judges_by_position:
+                    judges_by_position[pos_label] = []
+                judges_by_position[pos_label].append(name)
         
         # FESTE REIHENFOLGE: E H C M B (überspringen wenn nicht vorhanden)
         fixed_order = ["E", "H", "C", "M", "B"]
@@ -1329,8 +1333,9 @@ def render(starterlist, filename):
                 shading.set(qn('w:fill'), '404040')  # Dunkelgrau
                 run._element.get_or_add_rPr().append(shading)
                 
-                # Richtername (normal, kein Hintergrund)
-                run = p_jury.add_run(f" {judges_by_position[pos]}")
+                # Richtername(n) mit & verbunden wenn mehrere
+                names = ' & '.join(judges_by_position[pos])
+                run = p_jury.add_run(f" {names}")
                 run.font.size = Pt(9)
                 
                 # Abstand zum nächsten Richter
