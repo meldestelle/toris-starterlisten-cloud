@@ -748,6 +748,17 @@ with tab2:
             comp_obj = comp_tuple[0]
             comp_div = comp_tuple[1] if len(comp_tuple) > 1 else None
             
+            # Prüfe ob sich die Auswahl geändert hat
+            current_selection = f"{comp_obj.get('number')}_{comp_div}_{st.session_state.round_number}"
+            if "last_selection" not in st.session_state:
+                st.session_state.last_selection = current_selection
+            
+            # Wenn sich die Auswahl geändert hat, lösche die alte Starterliste
+            if st.session_state.last_selection != current_selection:
+                if "starterlist" in st.session_state:
+                    del st.session_state.starterlist
+                st.session_state.last_selection = current_selection
+            
             # ================================================================
             # STARTERLISTE LADEN
             # ================================================================
