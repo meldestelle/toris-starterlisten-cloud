@@ -1311,11 +1311,7 @@ def render(starterlist, filename):
             else:
                 pos_label = str(position) if position else ""
             
-            # WICHTIG: Liste statt einzelner Name (mehrere Richter pro Position!)
-            if pos_label and name:
-                if pos_label not in judges_by_position:
-                    judges_by_position[pos_label] = []
-                judges_by_position[pos_label].append(name)
+            judges_by_position[pos_label] = name
         
         # FESTE REIHENFOLGE: E H C M B (überspringen wenn nicht vorhanden)
         fixed_order = ["E", "H", "C", "M", "B"]
@@ -1333,9 +1329,8 @@ def render(starterlist, filename):
                 shading.set(qn('w:fill'), '404040')  # Dunkelgrau
                 run._element.get_or_add_rPr().append(shading)
                 
-                # Richtername(n) mit & verbunden wenn mehrere
-                names = ' & '.join(judges_by_position[pos])
-                run = p_jury.add_run(f" {names}")
+                # Richtername (normal, kein Hintergrund)
+                run = p_jury.add_run(f" {judges_by_position[pos]}")
                 run.font.size = Pt(9)
                 
                 # Abstand zum nächsten Richter
@@ -1407,6 +1402,10 @@ def render(starterlist, filename):
     
     # ROW COUNTER für korrektes Alternieren (inkl. Breaks!)
     row_counter = 0
+    
+    # GRUPPIERUNGSLOGIK (wie in pdf_nat.py)
+    current_group = None
+    group_start_time_shown = False
     
     # FLAGGEN-PFAD: App läuft von C:\Python, Flaggen sind in C:\Python\flags
     def find_flag_path(nat_code):
@@ -1495,6 +1494,48 @@ def render(starterlist, filename):
         print(f"✅ Pause vor erstem Starter eingefügt (weiß): '{break_text}'")
     
     for idx, starter in enumerate(starters):
+        # Prüfe auf Gruppenwechsel (Abteilung) BEVOR der Starter hinzugefügt wird
+        starter_group = starter.get("groupNumber")
+        
+        # Nur wenn groupNumber existiert und > 0
+        if starter_group is not None and starter_group > 0 and starter_group != current_group:
+            # Neue Gruppe erkannt - Gruppen-Header hinzufügen
+            group_text = f"Abteilung {starter_group}"
+            
+            # Füge Abteilungs-Header-Zeile ein
+            group_row = table.add_row()
+            group_cells = group_row.cells
+            set_row_height_auto(group_row)
+            
+            # Abteilungstext in erste Zelle
+            p_group = group_cells[0].paragraphs[0]
+            p_group.clear()
+            run = p_group.add_run(group_text)
+            run.font.name = 'Arial'
+            run.font.bold = True
+            run.font.size = Pt(10)
+            run.font.color.rgb = RGBColor(255, 255, 255)  # Weiß
+            p_group.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+            optimize_paragraph_spacing(p_group)
+            
+            # Andere Zellen leeren und mergen (6 Spalten)
+            for i in range(1, 6):
+                group_cells[i].paragraphs[0].clear()
+            
+            # Merge alle Zellen
+            cell_0 = group_cells[0]
+            for i in range(1, 6):
+                cell_0.merge(group_cells[i])
+            
+            # Dunkelgrauer Hintergrund (wie Header)
+            set_dark_header_background(group_row)
+            
+            # Update Gruppenvariablen
+            current_group = starter_group
+            group_start_time_shown = False  # Reset für neue Gruppe
+            
+            # row_counter NICHT erhöhen für Abteilungs-Header!
+        
         data_row = table.add_row()
         cells = data_row.cells
         
@@ -1537,8 +1578,15 @@ def render(starterlist, filename):
         optimize_paragraph_spacing(p0)
         
         # Column 1: Time MIT SEKUNDEN (durchgestrichen wenn withdrawn)
-        start_time = safe_get(starter, "startTime", "")
-        formatted_time = format_time(start_time)
+        # Zeit nur beim ersten Starter pro Gruppe zeigen, oder wenn keine Gruppierung
+        if starter_group is None or starter_group == 0 or not group_start_time_shown:
+            start_time = safe_get(starter, "startTime", "")
+            formatted_time = format_time(start_time)
+            if starter_group is not None and starter_group > 0:
+                group_start_time_shown = True  # Markiere Zeit als gezeigt
+        else:
+            formatted_time = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
+        
         p1 = cells[1].paragraphs[0]
         p1.clear()
         run = p1.add_run(formatted_time)
@@ -1682,11 +1730,14 @@ def render(starterlist, filename):
         # Column 4: Athlete (LINKSBÜNDIG!) - NEUE POSITION!
         athlete = starter.get("athlete", {})
         athlete_name = athlete.get("name", "") if athlete else ""
+        club = athlete.get("club", "") if athlete else ""
+        nationality = athlete.get("nation", "") if athlete else ""
         
         p4 = cells[4].paragraphs[0]
         p4.clear()
         p4.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT  # LINKSBÜNDIG!
         
+        # Reiter-Name (fett)
         if athlete_name:
             run = p4.add_run(athlete_name)
             run.font.name = 'Arial'
@@ -1695,10 +1746,44 @@ def render(starterlist, filename):
             if is_withdrawn:
                 run.font.strike = True
         
+        # Verein/Land-Logik (wie im PDF-Template)
+        # Neue Logik: Ausländer zeigen Land nur wenn Verein leer ODER "Gastlizenz GER"
+        if nationality and nationality.upper() != "GER":
+            # Ausländer
+            if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
+                # Kein Verein oder Gastlizenz → Land ausgeschrieben anzeigen
+                country_full = get_country_name_german(nationality)
+                if country_full:
+                    p4.add_run("\n")
+                    run = p4.add_run(country_full)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(7)  # 7pt für Club/Land
+                    run.font.bold = False
+                    if is_withdrawn:
+                        run.font.strike = True
+            else:
+                # Hat einen Verein (nicht Gastlizenz) → Verein anzeigen
+                p4.add_run("\n")
+                run = p4.add_run(club)
+                run.font.name = 'Arial'
+                run.font.size = Pt(7)  # 7pt für Club/Land
+                run.font.bold = False
+                if is_withdrawn:
+                    run.font.strike = True
+        elif club:
+            # Deutsche: Verein
+            p4.add_run("\n")
+            run = p4.add_run(club)
+            run.font.name = 'Arial'
+            run.font.size = Pt(7)  # 7pt für Club/Land
+            run.font.bold = False
+            if is_withdrawn:
+                run.font.strike = True
+        
         optimize_paragraph_spacing(p4)
         
         # Column 5: Nat. mit echten Flaggen-Icons - NEUE POSITION!
-        nationality = athlete.get("nation", "") if athlete else ""
+        # nationality wurde bereits oben bei Column 4 deklariert
         nat_code = get_nationality_code(nationality) if nationality else ""
         
         p5 = cells[5].paragraphs[0]
