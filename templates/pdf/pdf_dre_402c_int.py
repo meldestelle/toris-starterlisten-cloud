@@ -924,7 +924,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         elements.append(Spacer(1, 10))
         elements.append(Paragraph(f"<b>{title}</b>", style_sub))
         
-        jrows = [[Paragraph("<b>Pos.</b>", style_hdr), Paragraph("<b>Name</b>", style_sub), Paragraph("<b>Technical</b>", style_hdr)]]
+        jrows = [[Paragraph("<b>Pos.</b>", style_hdr), Paragraph("<b>Name</b>", style_sub), Paragraph("<b>Task</b>", style_sub)]]
         ordered_judges = _get_judge_data_for_display_402c(judges, starterlist)
         
         for judge in ordered_judges:
