@@ -1,46 +1,17 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/liste_nat.py - Deutsches Design mit Flaggen
+# templates/stream/liste_dre_int_2.py
+# Listen-Version: Doppelseitig - Vorderseiten (1,3,5...) Rand oben+unten, Rückseiten (2,4,6...) kein extra Rand
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame, NextPageTemplate
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.pdfgen import canvas
 from datetime import datetime
-
-def _fmt_header_datetime(iso):
-    """Format datetime for header: Samstag, 6. September 2025 um 08:00 Uhr"""
-    if not iso:
-        return ""
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", ""))
-        weekday_map = {
-            "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
-            "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag", "Sunday": "Sonntag"
-        }
-        month_map = {
-            "January": "Januar", "February": "Februar", "March": "März", "April": "April",
-            "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
-            "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
-        }
-        weekday = weekday_map.get(dt.strftime("%A"), dt.strftime("%A"))
-        month = month_map.get(dt.strftime("%B"), dt.strftime("%B"))
-        return f"{weekday}, {dt.day}. {month} {dt.year} um {dt.strftime('%H:%M')} Uhr"
-    except Exception:
-        return str(iso)
-
 import os
 
-WEEKDAY_MAP = {
-    "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
-    "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag", "Sunday": "Sonntag"
-}
-MONTH_MAP = {
-    "January": "Januar", "February": "Februar", "March": "März", "April": "April",
-    "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
-    "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
-}
+# No translation needed - English is default
 
 def get_nationality_code(nationality_str):
     """IOC → ISO 3166-1 alpha-3"""
@@ -68,7 +39,7 @@ def get_nationality_code(nationality_str):
     }
     return ioc_to_iso.get(code, code[:3] if len(code) >= 3 else code)
 
-def get_country_name(ioc_code):
+def get_country_name_english(ioc_code):
     """Returns full country name in German - Complete list for all 250 countries"""
     if not ioc_code:
         return ""
@@ -212,10 +183,6 @@ def find_flag_image(nat_code):
             return path
     return None
 
-def translate_sex(sex):
-    sex_map = {"STALLION": "Hengst", "GELDING": "Wallach", "MARE": "Stute"}
-    return sex_map.get(str(sex).upper() if sex else "", sex or "")
-
 def format_time(iso):
     if not iso:
         return ""
@@ -225,15 +192,35 @@ def format_time(iso):
     except:
         return str(iso).split("T")[-1][:8] if "T" in str(iso) else str(iso)
 
-def format_datetime_german(iso):
+def format_datetime_english(iso):
+    """English: Wednesday, March 19, 2025 14:00"""
     if not iso:
         return ""
     try:
         dt = datetime.fromisoformat(iso.replace("Z", ""))
-        wd = WEEKDAY_MAP.get(dt.strftime("%A"), dt.strftime("%A"))
-        mo = MONTH_MAP.get(dt.strftime("%B"), dt.strftime("%B"))
-        return f"{wd}, {dt.day}. {mo} {dt.year} {dt.strftime('%H:%M')} Uhr"
+        return dt.strftime("%A, %B %d, %Y %H:%M")
     except:
+        return str(iso)
+
+def _fmt_header_datetime(iso):
+    """Format datetime for header: Saturday, January 3, 2026 at 22:00"""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", ""))
+        weekday_map = {
+            "Monday": "Monday", "Tuesday": "Tuesday", "Wednesday": "Wednesday",
+            "Thursday": "Thursday", "Friday": "Friday", "Saturday": "Saturday", "Sunday": "Sunday"
+        }
+        month_map = {
+            "January": "January", "February": "February", "March": "March", "April": "April",
+            "May": "May", "June": "June", "July": "July", "August": "August",
+            "September": "September", "October": "October", "November": "November", "December": "December"
+        }
+        weekday = weekday_map.get(dt.strftime("%A"), dt.strftime("%A"))
+        month = month_map.get(dt.strftime("%B"), dt.strftime("%B"))
+        return f"{weekday}, {month} {dt.day}, {dt.year} at {dt.strftime('%H:%M')}"
+    except Exception:
         return str(iso)
 
 def format_pause_text(total_seconds, info):
@@ -243,11 +230,11 @@ def format_pause_text(total_seconds, info):
     if secs >= 3600:
         h = secs // 3600
         m = (secs % 3600) // 60
-        return f"Pause ({h} Std. {m:02d} Min.){' - ' + info if info else ''}"
+        return f"Break ({h} h {m:02d} min){' - ' + info if info else ''}"
     elif secs >= 60:
-        return f"Pause ({secs//60} Min.){' - ' + info if info else ''}"
+        return f"Break ({secs//60} min){' - ' + info if info else ''}"
     else:
-        return f"Pause ({secs} Sek.){' - ' + info if info else ''}"
+        return f"Break ({secs} Sek.){' - ' + info if info else ''}"
 
 class FooterCanvas(canvas.Canvas):
     """Canvas mit Sponsorenleiste im Footer"""
@@ -297,45 +284,50 @@ def render(starterlist, filename):
         # Fallback wenn Konvertierung fehlschlägt
         output_filename = "990.pdf"
     
-    # Verwende übergebenen filename statt filename
-    
+    # Verwende übergebenen filename statt lokalen Ausgabe-Pfad
     
     # Hole Abstände aus starterlist (in cm)
     spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
     spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
     
-    print(f"PDF LISTE DEBUG: Abstände - Seite 1 Oben: {spacing_top_cm}cm, Alle Seiten Unten: {spacing_bottom_cm}cm, Ab Seite 2 Oben: 1cm")
+    print(f"PDF LISTE DEBUG: Doppelseitig - Vorderseite Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm, Rückseite: kein extra Rand")
     
-    top_margin_first = spacing_top_cm * 10
-    top_margin_later = 1.0 * 10
-    bottom_margin = spacing_bottom_cm * 10
+    top_margin_front = spacing_top_cm * 10
+    top_margin_back = 1.0 * 10
+    bottom_margin_front = spacing_bottom_cm * 10
+    bottom_margin_back = 1.0 * 10
     
     class ListeDocTemplate(SimpleDocTemplate):
         def __init__(self, filename, **kw):
             self.allowSplitting = 1
+            self._page_count = 0
             SimpleDocTemplate.__init__(self, filename, **kw)
             
-        def build(self, flowables):
-            frame_first = Frame(
-                10*mm, bottom_margin*mm,
-                A4[0] - 20*mm, A4[1] - top_margin_first*mm - bottom_margin*mm,
-                id='first',
+            frame_front = Frame(
+                10*mm, bottom_margin_front*mm,
+                A4[0] - 20*mm, A4[1] - top_margin_front*mm - bottom_margin_front*mm,
+                id='front',
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
-            frame_later = Frame(
-                10*mm, bottom_margin*mm,
-                A4[0] - 20*mm, A4[1] - top_margin_later*mm - bottom_margin*mm,
-                id='later',
+            frame_back = Frame(
+                10*mm, bottom_margin_back*mm,
+                A4[0] - 20*mm, A4[1] - top_margin_back*mm - bottom_margin_back*mm,
+                id='back',
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
             self.addPageTemplates([
-                PageTemplate(id='First', frames=[frame_first]),
-                PageTemplate(id='Later', frames=[frame_later])
+                PageTemplate(id='Front', frames=[frame_front]),
+                PageTemplate(id='Back', frames=[frame_back])
             ])
-            
-            SimpleDocTemplate.build(self, flowables)
+        
+        def afterPage(self):
+            self._page_count += 1
+            if self._page_count % 2 == 1:
+                self._nextPageTemplateIndex = 1  # Back
+            else:
+                self._nextPageTemplateIndex = 0  # Front
     
     doc = ListeDocTemplate(
         filename,
@@ -359,16 +351,13 @@ def render(starterlist, filename):
     
     elements = []
     
-    # Nach erster Seite zu Later-Template wechseln
-    elements.append(NextPageTemplate('Later'))
-    
-    # KEINE Kopfzeile - direkt zur Tabelle
+    # Doppelseitig: Alternierung Front/Back wird über afterPage() gesteuert
     
     # Competition-Daten
     comp = starterlist.get("competition") or {}
+    show = starterlist.get("show") or {}
     
-
-    # --- KOPFZEILE: STARTERLISTE (links) und Datum/Ort (rechts) ---
+    # --- KOPFZEILE: STARTING ORDER (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
     
     # Zeit-Logik wie im PDF-Template
@@ -398,7 +387,7 @@ def render(starterlist, filename):
     
     location = comp.get("location") or starterlist.get("location") or ""
     
-    header_left = "<b>STARTERLISTE</b>"
+    header_left = "<b>STARTING ORDER</b>"
     header_right = ""
     if start_raw:
         formatted_time = _fmt_header_datetime(start_raw)
@@ -422,7 +411,7 @@ def render(starterlist, filename):
         ]))
         elements.append(header_table)
         elements.append(Spacer(1, 3*mm))
-
+    
 
     starters = starterlist.get("starters", [])
     breaks = starterlist.get("breaks", [])
@@ -443,7 +432,7 @@ def render(starterlist, filename):
     meta = []
     
     # Header
-    data_texts.append(["#", "Zeit", "KNR", "Pferd", "Reiter", "Nat."])
+    data_texts.append(["#", "Time", "CNO", "Horse", "Athlete", "Nat."])
     meta.append({"type": "header"})
     
     # WICHTIG: Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
@@ -464,7 +453,7 @@ def render(starterlist, filename):
         # Nur wenn groupNumber existiert und > 0
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             # Neue Gruppe erkannt - Gruppen-Header hinzufügen
-            group_text = f"Abteilung {starter_group}"
+            group_text = f"Division {starter_group}"
             data_texts.append([group_text, "", "", "", "", ""])
             meta.append({"type": "group"})
             
@@ -480,7 +469,7 @@ def render(starterlist, filename):
             if starter_group is not None and starter_group > 0:
                 group_start_time_shown = True  # Markiere Zeit als gezeigt
         else:
-            time_str = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
+            time_str = ""  # Verstecke Zeit
         
         horses = s.get("horses", [])
         horse = horses[0] if horses else {}
@@ -498,7 +487,7 @@ def render(starterlist, filename):
                 try:
                     current_year = datetime.now().year
                     age = current_year - int(breeding_season)
-                    details.append(f"{age}jähr.")
+                    details.append(f"{age}Y")
                 except:
                     pass
             
@@ -508,7 +497,7 @@ def render(starterlist, filename):
             
             sex = horse.get("sex", "")
             if sex:
-                details.append(translate_sex(sex))
+                details.append(sex.upper() if sex else "")
             
             studbook = horse.get("studbook", "")
             if studbook:
@@ -527,9 +516,9 @@ def render(starterlist, filename):
             owner = horse.get("owner", "")
             breeder = horse.get("breeder", "")
             if owner:
-                horse_html += f"<br/><font size=7><i>Besitzer: {owner}</i></font>"
+                horse_html += f"<br/><font size=7><i>Owner: {owner}</i></font>"
             if breeder:
-                horse_html += f"<br/><font size=7><i>Züchter: {breeder}</i></font>"
+                horse_html += f"<br/><font size=7><i>Breeder: {breeder}</i></font>"
         
         # Reiter mit Club/Land
         athlete = s.get("athlete", {})
@@ -541,7 +530,7 @@ def render(starterlist, filename):
         athlete_html = f"<b>{athlete_name}</b>" if athlete_name else ""
         if nationality and nationality.upper() != "GER":
             # Ausländer: Land ausgeschrieben
-            country_full = get_country_name(nationality)
+            country_full = get_country_name_english(nationality)
             if country_full:
                 athlete_html += f"<br/><font size=7>{country_full}</font>"
         elif club:
@@ -606,7 +595,7 @@ def render(starterlist, filename):
     
     # Spaltenbreiten
     page_width = A4[0] - 20*mm  # 10mm links + 10mm rechts
-    col_widths = [10*mm, 16*mm, 12*mm, 85*mm, 50*mm, 13*mm]  # +5mm Horse, +5mm Athlete
+    col_widths = [10*mm, 16*mm, 12*mm, 85*mm, 50*mm, 13*mm]
     
     table_rows = []
     for i, row in enumerate(data_texts):
@@ -621,7 +610,7 @@ def render(starterlist, filename):
                 Paragraph(row[4], style_hdr_left), Paragraph(row[5], style_hdr)
             ])
         elif m["type"] == "group":
-            # Abteilungs-Header (linksbündig, dunkler Hintergrund, weiße Schrift)
+            # Abteilungs-Header (fett, grau)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_group), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
@@ -675,7 +664,7 @@ def render(starterlist, filename):
         if ri < len(meta):
             m = meta[ri]
             if m.get("type") == "group":
-                # Abteilungs-Header: SPAN über alle Spalten, dunkler Hintergrund wie Header
+                # Abteilungs-Header: SPAN über alle Spalten, grauer Hintergrund
                 ts.add("SPAN", (0,ri), (5,ri))
                 ts.add("BACKGROUND", (0,ri), (5,ri), colors.HexColor('#404040'))
                 # Counter zurücksetzen für neue Abteilung
@@ -698,4 +687,4 @@ def render(starterlist, filename):
     
     # Build mit Footer-Canvas
     doc.build(elements)
-    print(f"PDF NAT: {filename}")
+    print(f"PDF INT: {filename}")

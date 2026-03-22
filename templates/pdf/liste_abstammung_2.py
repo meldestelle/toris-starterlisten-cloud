@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/liste_dre_3_logo.py
-# Listen-Version: Nur Tabelle, kein Kopfbereich
+# templates/stream/liste_abstammung_2.py
+# Listen-Version: Doppelseitig - Vorderseiten (1,3,5...) Rand oben+unten, Rückseiten (2,4,6...) kein extra Rand
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Flowable, PageTemplate, Frame, PageTemplate, Frame, NextPageTemplate
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from datetime import datetime
 import os
-from io import BytesIO
 
 WEEKDAY_MAP = {
     "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
@@ -32,25 +31,6 @@ SEX_MAP = {
     "": ""
 }
 
-class LogoFlowable(Flowable):
-    def __init__(self, logo_path):
-        self.logo_path = logo_path
-        self.width = 35*mm
-        self.height = 18*mm
-    
-    def wrap(self, availWidth, availHeight):
-        # Reserviert Platz für das Logo
-        return (self.width, self.height)
-    
-    def draw(self):
-        # Zeichnet das Logo an der aktuellen Position
-        self.canv.drawImage(self.logo_path, 0, 0, self.width, self.height, preserveAspectRatio=True, mask='auto')
-
-def _safe_get(d, key, default=""):
-    if not d:
-        return default
-    return d.get(key, default) if isinstance(d, dict) else default
-
 def _fmt_time(iso):
     if not iso:
         return ""
@@ -73,6 +53,18 @@ def _fmt_header_datetime(iso):
         return f"{weekday}, {dt.day}. {month} {dt.year} um {dt.strftime('%H:%M')} Uhr"
     except Exception:
         return str(iso)
+
+def _map_sex(s):
+    if not s:
+        return ""
+    s_up = str(s).upper()
+    if "GELD" in s_up or s_up == "M":
+        return "Wallach"
+    if "MARE" in s_up or "STUTE" in s_up or s_up == "F":
+        return "Stute"
+    if "STALL" in s_up or "STALLION" in s_up:
+        return "Hengst"
+    return s
 
 def _format_pause_text(total_seconds, info):
     secs = int(total_seconds or 0)
@@ -209,40 +201,7 @@ def get_country_name(ioc_code):
     
     return names.get(ioc_code.upper(), ioc_code)
 
-def _get_ordered_judge_positions_main_table(judges):
-    """Bestimmt die Richter für die Haupttabelle: E H C M B in fester Reihenfolge, maximal 3 Spalten für das 7-Spalten Layout"""
-    pos_map = {
-        0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
-        7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
-        "WARM_UP_AREA": "Aufsicht", "WATER_JUMP": "Wasser"
-    }
-    
-    available_positions = set()
-    judges_by_position = {}
-    
-    for judge in judges:
-        position = judge.get("position", "")
-        if isinstance(position, int):
-            pos_label = pos_map.get(position, str(position))
-        else:
-            pos_label = pos_map.get(str(position), str(position))
-        
-        if pos_label in ["E", "H", "C", "M", "B"]:
-            available_positions.add(pos_label)
-            judges_by_position[pos_label] = judge
-    
-    fixed_order = ["E", "H", "C", "M", "B"]
-    ordered_positions = [pos for pos in fixed_order if pos in available_positions]
-    
-    # Fülle auf 3 Spalten auf (für 7-Spalten Layout)
-    while len(ordered_positions) < 3:
-        ordered_positions.append("")
-    
-    return ordered_positions[:3]
-
-
 def _get_ordered_judges_all(judges):
-    """Sortiert alle Richter: E H C M B zuerst in fester Reihenfolge, dann alle anderen"""
     pos_map = {
         0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
         7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
@@ -250,7 +209,7 @@ def _get_ordered_judges_all(judges):
     }
     
     dressage_positions = ["E", "H", "C", "M", "B"]
-    dressage_judges = []
+    judges_by_position = {}  # Dictionary of Lists!
     other_judges = []
     
     for judge in judges:
@@ -260,26 +219,32 @@ def _get_ordered_judges_all(judges):
         else:
             pos_label = pos_map.get(str(position), str(position))
         
-        judge_with_pos = judge.copy()
-        judge_with_pos["pos_label"] = pos_label
+        judge_copy = judge.copy()
+        judge_copy["pos_label"] = pos_label
         
         if pos_label in dressage_positions:
-            dressage_judges.append(judge_with_pos)
+            # Füge zu Liste hinzu statt zu überschreiben
+            if pos_label not in judges_by_position:
+                judges_by_position[pos_label] = []
+            judges_by_position[pos_label].append(judge_copy)
         else:
-            other_judges.append(judge_with_pos)
+            other_judges.append(judge_copy)
     
-    ordered_dressage = []
+    # Return judges in E H C M B order first, then others
+    result = []
     for pos in dressage_positions:
-        for judge in dressage_judges:
-            if judge["pos_label"] == pos:
-                ordered_dressage.append(judge)
-                break
+        if pos in judges_by_position:
+            # Füge ALLE Richter dieser Position hinzu
+            result.extend(judges_by_position[pos])
     
+    # Add other judges sorted by position label
     other_judges.sort(key=lambda j: j["pos_label"])
-    return ordered_dressage + other_judges
-
+    result.extend(other_judges)
+    
+    return result
 def render(starterlist: dict, filename: str):
-    # Hole Abstände aus starterlist (in cm)
+    print(f"DEBUG: Starting PDF render for {filename}")
+    
     # Ausgabe-Pfad
     # Extrahiere Prüfungsnummer und Abteilung für XXY Format
     comp = starterlist.get("competition") or {}
@@ -304,44 +269,51 @@ def render(starterlist: dict, filename: str):
         # Fallback wenn Konvertierung fehlschlägt
         output_filename = "990.pdf"
     
-    # Verwende übergebenen filename statt filename
+    # Verwende übergebenen filename statt lokalen Ausgabe-Pfad
     
-    
+    # Hole Abstände aus starterlist (in cm)
     spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
     spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
     
-    print(f"PDF LISTE DEBUG: Abstände - Seite 1 Oben: {spacing_top_cm}cm, Alle Seiten Unten: {spacing_bottom_cm}cm, Ab Seite 2 Oben: 1cm")
+    print(f"PDF LISTE DEBUG: Doppelseitig - Vorderseite Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm, Rückseite: kein extra Rand")
     
-    top_margin_first = spacing_top_cm * 10
-    top_margin_later = 1.0 * 10
-    bottom_margin = spacing_bottom_cm * 10
+    top_margin_front = spacing_top_cm * 10
+    top_margin_back = 1.0 * 10
+    bottom_margin_front = spacing_bottom_cm * 10
+    bottom_margin_back = 1.0 * 10
     
     class ListeDocTemplate(SimpleDocTemplate):
         def __init__(self, filename, **kw):
             self.allowSplitting = 1
+            self._page_count = 0
             SimpleDocTemplate.__init__(self, filename, **kw)
             
-        def build(self, flowables):
-            frame_first = Frame(
-                8*mm, bottom_margin*mm,
-                A4[0] - 16*mm, A4[1] - top_margin_first*mm - bottom_margin*mm,
-                id='first',
+            frame_front = Frame(
+                8*mm, bottom_margin_front*mm,
+                A4[0] - 16*mm, A4[1] - top_margin_front*mm - bottom_margin_front*mm,
+                id='front',
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
-            frame_later = Frame(
-                8*mm, bottom_margin*mm,
-                A4[0] - 16*mm, A4[1] - top_margin_later*mm - bottom_margin*mm,
-                id='later',
+            frame_back = Frame(
+                8*mm, bottom_margin_back*mm,
+                A4[0] - 16*mm, A4[1] - top_margin_back*mm - bottom_margin_back*mm,
+                id='back',
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
             self.addPageTemplates([
-                PageTemplate(id='First', frames=[frame_first]),
-                PageTemplate(id='Later', frames=[frame_later])
+                PageTemplate(id='Front', frames=[frame_front]),
+                PageTemplate(id='Back', frames=[frame_back])
             ])
-            
-            SimpleDocTemplate.build(self, flowables)
+        
+        def afterPage(self):
+            self._page_count += 1
+            # Nach einer Vorderseite (ungerade) kommt Rückseite, und umgekehrt
+            if self._page_count % 2 == 1:
+                self._nextPageTemplateIndex = 1  # Back
+            else:
+                self._nextPageTemplateIndex = 0  # Front
     
     doc = ListeDocTemplate(
         filename,
@@ -356,7 +328,7 @@ def render(starterlist: dict, filename: str):
     style_sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, leading=15)
     style_info = ParagraphStyle("info", parent=styles["Normal"], fontSize=11, leading=15)
     style_hdr = ParagraphStyle("hdr", parent=styles["Normal"], fontSize=9, alignment=1)
-    style_hdr_left = ParagraphStyle("hdr_left", parent=styles["Normal"], fontSize=9, alignment=0)
+    style_hdr_left = ParagraphStyle("hdr_left", parent=styles["Normal"], fontSize=9, alignment=0)  # linksbündig für Gruppen
     style_pos = ParagraphStyle("pos", parent=styles["Normal"], fontSize=9, alignment=1)
     style_rider = ParagraphStyle("rider", parent=styles["Normal"], fontSize=8, leading=9)
     style_horse = ParagraphStyle("horse", parent=styles["Normal"], fontSize=8, leading=9)
@@ -364,12 +336,12 @@ def render(starterlist: dict, filename: str):
 
     elements = []
     
-    # Nach erster Seite zu Later-Template wechseln
-    elements.append(NextPageTemplate('Later'))
+    # Doppelseitig: Alternierung Front/Back wird über afterPage() gesteuert
+    
+    # KEINE Kopfzeile - direkt zur Tabelle
     
     # Competition-Daten
     comp = starterlist.get("competition") or {}
-    show = starterlist.get("show") or {}
     
     # --- KOPFZEILE: STARTERLISTE (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
@@ -425,8 +397,8 @@ def render(starterlist: dict, filename: str):
         ]))
         elements.append(header_table)
         elements.append(Spacer(1, 3*mm))
-    
-    # --- TABELLE MIT 3 RICHTER-SPALTEN (7 Spalten total) MIT GRUPPIERUNGSLOGIK ---
+
+
     starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
     breaks_by_after = {}
@@ -442,20 +414,19 @@ def render(starterlist: dict, filename: str):
         except:
             continue
 
-    judges = comp.get("judges") or starterlist.get("judges") or []
-    judge_positions = _get_ordered_judge_positions_main_table(judges)
-
     data_texts = []
     meta = []
-    data_texts.append(["<b>Start</b>", "<b>KoNr.</b>", "<b>Reiter / Pferd</b><br/><font size=7>Geschlecht / Farbe / Geboren / Vater x Muttervater / Besitzer / Züchter</font>", f"<b>{judge_positions[0]}</b>", f"<b>{judge_positions[1]}</b>", f"<b>{judge_positions[2]}</b>", "<b>Total</b>"])
+    data_texts.append(["Start", "KoNr.", "Reiter", "Pferd", "Ergeb."])
     meta.append({"type":"header"})
     
     # WICHTIG: Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
     if 0 in breaks_by_after:
         for br in breaks_by_after[0]:
             pause_text = _format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-            data_texts.append([pause_text, "", "", "", "", "", ""])  # 7 Spalten
+            data_texts.append([pause_text, "", "", "", ""])
             meta.append({"type":"pause"})
+
+    print(f"DEBUG: Processing {len(starters)} starters...")
 
     # GRUPPIERUNGSLOGIK VOM STANDARD TEMPLATE ÜBERNOMMEN - ABER VEREINFACHT
     current_group = None
@@ -469,7 +440,7 @@ def render(starterlist: dict, filename: str):
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             # Neue Gruppe erkannt - Gruppen-Header hinzufügen
             group_text = f"Abteilung {starter_group}"
-            data_texts.append([group_text, "", "", "", "", "", ""])
+            data_texts.append([group_text, "", "", "", ""])
             meta.append({"type":"group"})
             
             current_group = starter_group
@@ -487,117 +458,77 @@ def render(starterlist: dict, filename: str):
         else:
             start_time_display = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
         
-        # Startnummer mit optionalem AK-Zusatz
-        if hors_concours:
-            if start_time_display:
-                pos_html = f"<b>{nr}</b><br/><font size=7>AK</font><br/><font size=9>{start_time_display}</font>"
-            else:
-                pos_html = f"<b>{nr}</b><br/><font size=7>AK</font>"
-        else:
-            pos_html = f"<b>{nr}</b><br/><font size=9>{start_time_display}</font>" if start_time_display else f"<b>{nr}</b>"
+        # Startnummer OHNE AK (AK kommt in letzte Spalte)
+        pos_html = f"<b>{nr}</b><br/><font size=9>{start_time_display}</font>" if start_time_display else f"<b>{nr}</b>"
 
+        # Get KoNr. (cno) from horse data
         horses = s.get("horses") or []
         cno = ""
         if horses:
             horse = horses[0]
             cno = str(horse.get("cno", ""))
 
-        # VERBESSERTE ABSTAMMUNGSDARSTELLUNG
         athlete = s.get("athlete") or {}
-        rider_name = _safe_get(athlete, "name", "")
-        club = _safe_get(athlete, "club", "")
-        nationality = _safe_get(athlete, "nation", "")
-        
-        content_parts = []
-        if rider_name:
-            # Reitername fett
-            rider_line = f"<b>{rider_name.upper()}</b>"
+        rider_html = "<br/>".join([
+            f"<b>{athlete.get('name','')}</b>" if athlete.get("name") else "",
+            f"<font size=7>{athlete.get('club')}</font>" if athlete.get("club") else "",
+            f"<font size=7>{athlete.get('nation')}</font>" if athlete.get("nation") else "",
+        ])
+
+        horse_html = ""
+        for h in horses:
+            # Pferdename fett, Zuchtgebiet normal mit " - " getrennt
+            name_line = f"<b>{h.get('name','')}</b>"
+            if h.get("studbook"):
+                name_line += f" - {h.get('studbook')}"
             
-            # Logik: Ausländer zeigen Land nur wenn Verein leer ODER "Gastlizenz GER"
-            if nationality and nationality.upper() != "GER":
-                # Ausländer
-                if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
-                    # Kein Verein oder Gastlizenz → Land ausgeschrieben anzeigen
-                    country_full = get_country_name(nationality)
-                    if country_full:
-                        rider_line += f" - <font size=7>{country_full}</font>"
-                else:
-                    # Hat einen Verein (nicht Gastlizenz) → Verein anzeigen
-                    rider_line += f" - <font size=7>{club}</font>"
-            elif club:
-                # Deutsche: Verein
-                rider_line += f" - <font size=7>{club}</font>"
+            # Kombiniere alle Details in einer Zeile mit " / " getrennt
+            details = []
+            if h.get("breedingSeason"): 
+                details.append(str(h.get("breedingSeason")))
+            if h.get("color"): 
+                details.append(h.get("color"))
+            if h.get("sex"): 
+                sex_german = SEX_MAP.get(str(h.get("sex")).upper(), h.get("sex"))
+                details.append(sex_german)
             
-            content_parts.append(rider_line)
-        
-        if horses:
-            horse = horses[0]
-            horse_name = _safe_get(horse, "name", "")
-            studbook = _safe_get(horse, "studbook", "")
+            # Pedigree hinzufügen falls vorhanden
+            if h.get("sire") or h.get("damSire"):
+                ped = " x ".join([p for p in (h.get("sire"), h.get("damSire")) if p])
+                details.append(ped)
             
-            horse_line = ""
-            if horse_name:
-                horse_line = f"<b>{horse_name.upper()}</b>"
-            if studbook:
-                if horse_line:
-                    horse_line += f" - {studbook}"
-                else:
-                    horse_line = studbook
-            if horse_line:
-                content_parts.append(horse_line)
-            
-            details_parts = []
-            sex = _safe_get(horse, "sex", "")
-            sex_german = SEX_MAP.get(str(sex).upper(), sex)
-            if sex_german:
-                details_parts.append(sex_german)
-            
-            color = _safe_get(horse, "color", "")
-            if color:
-                details_parts.append(color)
-                
-            year = _safe_get(horse, "breedingSeason", "")
-            if year:
-                details_parts.append(str(year))
-                
-            sire = _safe_get(horse, "sire", "")
-            damsire = _safe_get(horse, "damSire", "")
-            if sire:
-                pedigree = sire
-                if damsire:
-                    pedigree += f" x {damsire}"
-                details_parts.append(pedigree)
-            
-            if details_parts:
-                details_text = " / ".join(details_parts)
-                content_parts.append(f"<font size=7>{details_text}</font>")
+            # Alle Details in einer Zeile
+            if details:
+                name_line += f"<br/><font size=7>{' / '.join(details)}</font>"
             
             # Besitzer und Züchter kompakt in einer Zeile (wie im Beispiel-Template)
-            owner = _safe_get(horse, "owner", "")
-            breeder = _safe_get(horse, "breeder", "")
+            owner = h.get("owner")
+            breeder = h.get("breeder")
             
             if owner and breeder:
                 # Beide vorhanden
                 if owner.strip() == breeder.strip():
                     # Identisch: "B u. Z: Name"
-                    content_parts.append(f"<font size=6.5><i>B u. Z: {owner}</i></font>")
+                    name_line += f"<br/><font size=6.5><i>B u. Z: {owner}</i></font>"
                 else:
                     # Unterschiedlich: "B: Name / Z: Name"
-                    content_parts.append(f"<font size=6.5><i>B: {owner} / Z: {breeder}</i></font>")
+                    name_line += f"<br/><font size=6.5><i>B: {owner} / Z: {breeder}</i></font>"
             elif owner:
                 # Nur Besitzer
-                content_parts.append(f"<font size=6.5><i>B: {owner}</i></font>")
+                name_line += f"<br/><font size=6.5><i>B: {owner}</i></font>"
             elif breeder:
                 # Nur Züchter
-                content_parts.append(f"<font size=6.5><i>Z: {breeder}</i></font>")
+                name_line += f"<br/><font size=6.5><i>Z: {breeder}</i></font>"
+            
+            horse_html += name_line + ("<br/><br/>" if len(horses) > 1 else "")
 
-        combined_content = "<br/>".join(content_parts)
-
-        data_texts.append([pos_html, cno, combined_content, "", "", "", ""])
+        # AK in letzte Spalte (Ergebnis-Spalte) mittig
+        result_html = "AK" if hors_concours else ""
+        
+        data_texts.append([pos_html, cno, rider_html or "", horse_html or "", result_html])
         withdrawn_flag = bool(s.get("withdrawn", False))
         meta.append({"type":"starter","withdrawn":withdrawn_flag, "horsConcours": hors_concours})
 
-        # Breaks verarbeiten
         try:
             cur = int(nr)
         except:
@@ -605,40 +536,46 @@ def render(starterlist: dict, filename: str):
         if cur is not None and cur in breaks_by_after:
             for br in breaks_by_after[cur]:
                 pause_text = _format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-                data_texts.append([pause_text, "", "", "", "", "", ""])
+                data_texts.append([pause_text, "", "", "", ""])
                 meta.append({"type":"pause"})
 
-    # --- Tabelle erstellen (7 Spalten) ---
+    print(f"DEBUG: Created data_texts with {len(data_texts)} rows")
+
+    # --- ZURÜCK ZUR EINFACHEN TABELLENLÖSUNG (ohne komplexe Gruppierung) ---
+    
+    # Spaltenbreiten definieren
+    # WICHTIG: Da wir PageTemplate mit Frames verwenden, müssen wir die Ränder manuell abziehen
     page_width = A4[0] - 16*mm  # 8mm links + 8mm rechts
     col1 = 18*mm
     col2 = 16*mm      # KoNr. breiter gemacht (von 12mm auf 16mm)
-    col_judge = 12*mm
-    col_total = 15*mm
-    col3 = page_width - col1 - col2 - (3*col_judge) - col_total
-    col_widths = [col1, col2, col3, col_judge, col_judge, col_judge, col_total]
+    col3 = 45*mm
+    col5 = 20*mm
+    col4 = page_width - (col1+col2+col3+col5)
+    if col4 < 50*mm: col4 = 50*mm
+    col_widths = [col1, col2, col3, col4, col5]
 
     table_rows = []
     for i, row in enumerate(data_texts):
+        if i >= len(meta):  # Sicherheitsprüfung
+            continue
+            
         m = meta[i]
         if m["type"] == "header":
             table_rows.append([
                 Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr),
-                Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr),
-                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr),
-                Paragraph(row[6], style_hdr)
+                Paragraph(row[2], style_sub), Paragraph(row[3], style_sub),
+                Paragraph(row[4], style_hdr)
             ])
         elif m["type"] == "group":
-            # GRUPPIERUNGSLOGIK VOM STANDARD TEMPLATE - LINKSBÜNDIG
+            # GRUPPIERUNGSLOGIK - LINKSBÜNDIG (nur wenn Gruppen vorhanden)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_hdr_left), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub)
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub)
             ])
@@ -650,66 +587,71 @@ def render(starterlist: dict, filename: str):
             table_rows.append([
                 maybe_strike(row[0], style_pos),
                 maybe_strike(row[1], style_pos),
-                maybe_strike(row[2], style_horse),
-                maybe_strike(row[3], style_pos),
+                maybe_strike(row[2], style_rider),
+                maybe_strike(row[3], style_horse),
                 maybe_strike(row[4], style_pos),
-                maybe_strike(row[5], style_pos),
-                maybe_strike(row[6], style_pos),
             ])
 
-    t = Table(table_rows, colWidths=col_widths, repeatRows=1)
-    ts = TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),
-        ("ALIGN", (1,0), (1,-1), "CENTER"),
-        ("ALIGN", (2,0), (2,-1), "LEFT"),
-        ("ALIGN", (3,0), (-1,-1), "CENTER"),
-    ])
+    print(f"DEBUG: About to create table with {len(table_rows)} rows")
 
-    # Styling für spezielle Zeilen (OHNE PageBreak-Versuche)
-    starter_row_count = 0  # Zähler für Starter-Zeilen (für Zebra-Streifen)
-    
-    for ri in range(1, len(table_rows)):
-        if ri < len(meta):
-            m = meta[ri]
-            if m and m.get("type") == "group":
-                ts.add("SPAN", (0,ri), (-1,ri))
-                ts.add("BACKGROUND", (0,ri), (-1,ri), colors.Color(0.9, 0.9, 0.9))
-                ts.add("ALIGN", (0,ri), (-1,ri), "LEFT")
-                # Counter zurücksetzen für neue Abteilung
-                starter_row_count = 0
-            elif m and m.get("type") == "pause":
-                ts.add("SPAN", (0,ri), (-1,ri))
-                # Prüfe ob vorheriger Starter grau war
-                prev_was_gray = (starter_row_count - 1) % 2 == 1
-                if not prev_was_gray:  # Vorherige war weiß → Pause grau
-                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
-                ts.add("ALIGN", (0,ri), (-1,ri), "CENTER")
-                # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
-                starter_row_count -= 1
-            elif m and m.get("type") == "starter":
-                # Zebra: ungerade Starter sind grau (1, 3, 5, ...)
-                if starter_row_count % 2 == 1:
-                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
-                
-                # Withdrawn: Kein extra Hintergrund - nur durchgestrichen im Text
-                
-                starter_row_count += 1
+    try:
+        t = Table(table_rows, colWidths=col_widths, repeatRows=1)
+        ts = TableStyle([
+            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+            ("ALIGN", (0,0), (0,-1), "CENTER"),
+            ("ALIGN", (1,0), (1,-1), "CENTER"),
+            ("ALIGN", (-1,0), (-1,-1), "CENTER"),
+        ])
 
-    t.setStyle(ts)
-    elements.append(t)
+        # Styling für spezielle Zeilen (OHNE PageBreak-Versuche)
+        starter_row_count = 0  # Zähler für Starter-Zeilen (für Zebra-Streifen)
+        
+        for ri in range(1, len(table_rows)):
+            if ri < len(meta):
+                m = meta[ri]
+                if m and m.get("type") == "group":
+                    ts.add("SPAN", (0,ri), (-1,ri))
+                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.Color(0.9, 0.9, 0.9))
+                    ts.add("ALIGN", (0,ri), (-1,ri), "LEFT")
+                    # Counter zurücksetzen für neue Abteilung
+                    starter_row_count = 0
+                elif m and m.get("type") == "pause":
+                    ts.add("SPAN", (0,ri), (-1,ri))
+                    # Prüfe ob vorheriger Starter grau war
+                    prev_was_gray = (starter_row_count - 1) % 2 == 1
+                    if not prev_was_gray:  # Vorherige war weiß → Pause grau
+                        ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
+                    ts.add("ALIGN", (0,ri), (-1,ri), "CENTER")
+                    # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
+                    starter_row_count -= 1
+                elif m and m.get("type") == "starter":
+                    # Zebra: ungerade Starter sind grau (1, 3, 5, ...)
+                    if starter_row_count % 2 == 1:
+                        ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
+                    
+                    # Withdrawn: Kein extra Hintergrund - nur durchgestrichen im Text (via maybe_strike)
+                    
+                    starter_row_count += 1
+
+        t.setStyle(ts)
+        elements.append(t)
+        print("DEBUG: Table created and added successfully")
+    except Exception as e:
+        print(f"DEBUG: Table creation error: {e}")
+        raise
 
     # --- Richter ---
     judges = comp.get("judges") or starterlist.get("judges") or []
     judging_rule = comp.get("judgingRule") or starterlist.get("judgingRule")
     if judges:
+        print(f"DEBUG: Adding {len(judges)} judges...")
         title = "Richter" + (f" ({judging_rule})" if judging_rule else "")
         elements.append(Spacer(1, 10))
         elements.append(Paragraph(f"<b>{title}</b>", style_sub))
-        
         jrows = [[Paragraph("<b>Pos.</b>", style_hdr), Paragraph("<b>Name</b>", style_sub)]]
+        
         ordered_judges = _get_ordered_judges_all(judges)
         
         for judge in ordered_judges:
@@ -724,5 +666,12 @@ def render(starterlist: dict, filename: str):
             ("ALIGN",(0,0),(0,-1),"CENTER"),
         ]))
         elements.append(jt)
+        print("DEBUG: Judges table added successfully")
 
-    doc.build(elements)
+    print("DEBUG: About to build PDF document...")
+    try:
+        doc.build(elements)
+        print("DEBUG: PDF build completed successfully!")
+    except Exception as e:
+        print(f"DEBUG: PDF build error: {e}")
+        raise

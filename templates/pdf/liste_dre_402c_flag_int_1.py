@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_dre_402c_logo.py - Speziell für Richtverfahren 402.C
+# templates/stream/liste_dre_402c_flag_int_1.py
+# Listen-Version: Einseitig - Jede Seite hat Rand oben + unten (für einseitig bedrucktes Sponsorenpapier)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import BaseDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
@@ -356,14 +357,35 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     # KEIN hardcodierter "Ausgabe" Ordner mehr!
 
-    # LISTEN: Nutze spacingBottomCm statt Sponsorenleiste
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    bottom_margin = spacing_bottom_cm * 10 * mm  # cm in mm
+    # Berechne dynamische Ränder basierend auf Sponsorenleiste
+    spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
     
-    doc = SimpleDocTemplate(
+    print(f"PDF LISTE DEBUG: Einseitig - Alle Seiten Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm")
+    
+    top_margin = spacing_top_cm * 10
+    bottom_margin = spacing_bottom_cm * 10
+    
+    class ListeDocTemplate(BaseDocTemplate):
+        def __init__(self, filename, **kw):
+            self.allowSplitting = 1
+            BaseDocTemplate.__init__(self, filename, **kw)
+            
+            frame_all = Frame(
+                8*mm, bottom_margin*mm,
+                A4[0] - 16*mm, A4[1] - top_margin*mm - bottom_margin*mm,
+                id='all',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            self.addPageTemplates([
+                PageTemplate(id='AllPages', frames=[frame_all])
+            ])
+    
+    doc = ListeDocTemplate(
         filename, pagesize=A4,
-        leftMargin=8*mm, rightMargin=8*mm,
-        topMargin=8*mm, bottomMargin=bottom_margin
+        rightMargin=0, leftMargin=0,
+        topMargin=0, bottomMargin=0
     )
 
     styles = getSampleStyleSheet()
@@ -384,12 +406,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     show = starterlist.get("show") or {}
     comp = starterlist.get("competition") or {}
     
-    spacing_top_cm = starterlist.get("spacingTopCm", 0.0)
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    
-    # Ersten Spacer einfügen
-    if spacing_top_cm > 0:
-        elements.append(Spacer(1, spacing_top_cm * 10 * mm))
+    # Einseitig: Ränder werden durch Frame gesteuert
 
     # --- KOPFZEILE: STARTING ORDER (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
@@ -724,7 +741,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     # Tabelle erstellen - 6 SPALTEN
     # Spaltenbreiten - MIT NAT-SPALTE, Start+KNr kombiniert
-    page_width = A4[0] - doc.leftMargin - doc.rightMargin
+    page_width = A4[0] - 16*mm  # 8mm links + 8mm rechts (Frame-Ränder)
     col1 = 22*mm  # Start+KNr kombiniert
     col_nat = 8*mm  # Nat (Flagge+Kürzel)
     col_aufgabe = 20*mm

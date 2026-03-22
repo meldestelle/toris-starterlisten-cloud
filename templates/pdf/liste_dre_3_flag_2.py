@@ -1,35 +1,51 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_dre_5_logo.py
+# templates/stream/liste_dre_3_flag_2.py
+# Listen-Version: Doppelseitig - Vorderseiten (1,3,5...) Rand oben+unten, Rückseiten (2,4,6...) kein extra Rand
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Flowable, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
+from io import BytesIO
 
 WEEKDAY_MAP = {
-    "Monday": "Monday", "Tuesday": "Tuesday", "Wednesday": "Wednesday",
-    "Thursday": "Thursday", "Friday": "Friday", "Saturday": "Saturday",
-    "Sunday": "Sunday"
+    "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
+    "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag",
+    "Sunday": "Sonntag"
 }
 
 MONTH_MAP = {
-    "January": "January", "February": "February", "March": "March", "April": "April",
-    "May": "May", "June": "June", "July": "July", "August": "August",
-    "September": "September", "October": "October", "November": "November", "December": "December"
+    "January": "Januar", "February": "Februar", "March": "März", "April": "April",
+    "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
+    "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
 }
 
 # Mapping für Geschlecht - VERBESSERT
 SEX_MAP = {
-    "MARE": "mare",
-    "GELDING": "gelding", 
-    "STALLION": "stallion",
-    "M": "gelding",
-    "F": "mare",
+    "MARE": "Stute",
+    "GELDING": "Wallach", 
+    "STALLION": "Hengst",
+    "M": "Wallach",
+    "F": "Stute",
     "": ""
 }
+
+class LogoFlowable(Flowable):
+    def __init__(self, logo_path):
+        self.logo_path = logo_path
+        self.width = 35*mm
+        self.height = 18*mm
+    
+    def wrap(self, availWidth, availHeight):
+        # Reserviert Platz für das Logo
+        return (self.width, self.height)
+    
+    def draw(self):
+        # Zeichnet das Logo an der aktuellen Position
+        self.canv.drawImage(self.logo_path, 0, 0, self.width, self.height, preserveAspectRatio=True, mask='auto')
 
 def _safe_get(d, key, default=""):
     if not d:
@@ -55,22 +71,22 @@ def _fmt_header_datetime(iso):
         dt = datetime.fromisoformat(iso.replace("Z", ""))
         weekday = WEEKDAY_MAP.get(dt.strftime("%A"), dt.strftime("%A"))
         month = MONTH_MAP.get(dt.strftime("%B"), dt.strftime("%B"))
-        return f"{weekday}, {month} {dt.day}, {dt.year} at {dt.strftime('%H:%M')}"
+        return f"{weekday}, {dt.day}. {month} {dt.year} um {dt.strftime('%H:%M')} Uhr"
     except Exception:
         return str(iso)
 
 def _format_pause_text(total_seconds, info):
     secs = int(total_seconds or 0)
     if secs == 0:
-        return info or "Break"
+        return info or "Pause"
     if secs >= 3600:
         h = secs // 3600
         m = (secs % 3600) // 60
-        base = f"{h} hr {m:02d} min Break"
+        base = f"{h} Std. {m:02d} Min. Pause"
     elif secs >= 60:
-        base = f"{secs//60} minutes Break"
+        base = f"{secs//60} Minuten Pause"
     else:
-        base = f"{secs} seconds Break"
+        base = f"{secs} Sekunden Pause"
     return f"{base} - {info}" if info else base
 
 def _process_information_text(text):
@@ -82,11 +98,11 @@ def _process_information_text(text):
     return text
 
 def _get_ordered_judge_positions_main_table(judges):
-    """Bestimmt die Richter für die Haupttabelle: E H C M B in fester Reihenfolge, maximal 5 Spalten"""
+    """Bestimmt die Richter für die Haupttabelle: E H C M B in fester Reihenfolge, maximal 3 Spalten für das 7-Spalten Layout"""
     pos_map = {
         0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
         7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
-        "WARM_UP_AREA": "Warm up", "WATER_JUMP": "Water"
+        "WARM_UP_AREA": "Aufsicht", "WATER_JUMP": "Wasser"
     }
     
     available_positions = set()
@@ -106,17 +122,18 @@ def _get_ordered_judge_positions_main_table(judges):
     fixed_order = ["E", "H", "C", "M", "B"]
     ordered_positions = [pos for pos in fixed_order if pos in available_positions]
     
-    while len(ordered_positions) < 5:
+    # Fülle auf 3 Spalten auf (für 7-Spalten Layout)
+    while len(ordered_positions) < 3:
         ordered_positions.append("")
     
-    return ordered_positions[:5]
+    return ordered_positions[:3]
 
 def _get_ordered_judges_all(judges):
     """Sortiert alle Richter: E H C M B zuerst in fester Reihenfolge, dann alle anderen"""
     pos_map = {
         0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
         7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
-        "WARM_UP_AREA": "Warm up", "WATER_JUMP": "Water"
+        "WARM_UP_AREA": "Aufsicht", "WATER_JUMP": "Wasser"
     }
     
     dressage_positions = ["E", "H", "C", "M", "B"]
@@ -168,113 +185,113 @@ def get_nationality_code(nationality_str):
     return ioc_to_iso.get(code, code[:3] if len(code) >= 3 else code)
 
 def get_country_name(ioc_code):
-    """Returns full country name in English - Complete list for all 250 countries"""
+    """Returns full country name in German - Complete list for all 250 countries"""
     if not ioc_code:
         return ""
     
     names = {
         # A
-        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albania", "ALG": "Algeria",
-        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua and Barbuda", "ARG": "Argentina",
-        "ARM": "Armenia", "ARU": "Aruba", "ASA": "American Samoa", "AUS": "Australia",
-        "AUT": "Austria", "AZE": "Azerbaijan",
+        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albanien", "ALG": "Algerien",
+        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua und Barbuda", "ARG": "Argentinien",
+        "ARM": "Armenien", "ARU": "Aruba", "ASA": "Amerikanisch-Samoa", "AUS": "Australien",
+        "AUT": "Österreich", "AZE": "Aserbaidschan",
         
         # B
-        "BAH": "Bahamas", "BAN": "Bangladesh", "BAR": "Barbados", "BDI": "Burundi",
-        "BEL": "Belgium", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
-        "BIH": "Bosnia and Herzegovina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivia",
-        "BOT": "Botswana", "BRA": "Brazil", "BRN": "Bahrain", "BRU": "Brunei",
-        "BUL": "Bulgaria", "BUR": "Burkina Faso",
+        "BAH": "Bahamas", "BAN": "Bangladesch", "BAR": "Barbados", "BDI": "Burundi",
+        "BEL": "Belgien", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
+        "BIH": "Bosnien und Herzegowina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivien",
+        "BOT": "Botswana", "BRA": "Brasilien", "BRN": "Bahrain", "BRU": "Brunei",
+        "BUL": "Bulgarien", "BUR": "Burkina Faso",
         
         # C
-        "CAF": "Central African Republic", "CAM": "Cambodia", "CAN": "Canada",
-        "CAY": "Cayman Islands", "CGO": "Congo", "CHA": "Chad", "CHI": "Chile",
-        "CHN": "China", "CIV": "Ivory Coast", "CMR": "Cameroon", "COD": "DR Kongo",
-        "COK": "Cook Islands", "COL": "Colombia", "COM": "Comoros", "CPV": "Cape Verde",
-        "CRC": "Costa Rica", "CRO": "Croatia", "CUB": "Cuba", "CYP": "Cyprus",
-        "CZE": "Czech Republic",
+        "CAF": "Zentralafrikanische Republik", "CAM": "Kambodscha", "CAN": "Kanada",
+        "CAY": "Kaimaninseln", "CGO": "Kongo", "CHA": "Tschad", "CHI": "Chile",
+        "CHN": "China", "CIV": "Elfenbeinküste", "CMR": "Kamerun", "COD": "DR Kongo",
+        "COK": "Cookinseln", "COL": "Kolumbien", "COM": "Komoren", "CPV": "Kap Verde",
+        "CRC": "Costa Rica", "CRO": "Kroatien", "CUB": "Kuba", "CYP": "Zypern",
+        "CZE": "Tschechien",
         
         # D-E
-        "DEN": "Denmark", "DJI": "Djibouti", "DMA": "Dominica", "DOM": "Dominican Republic",
-        "ECU": "Ecuador", "EGY": "Egypt", "ERI": "Eritrea", "ESA": "El Salvador",
-        "ESP": "Spain", "EST": "Estonia", "ETH": "Ethiopia",
+        "DEN": "Dänemark", "DJI": "Dschibuti", "DMA": "Dominica", "DOM": "Dominikanische Republik",
+        "ECU": "Ecuador", "EGY": "Ägypten", "ERI": "Eritrea", "ESA": "El Salvador",
+        "ESP": "Spanien", "EST": "Estland", "ETH": "Äthiopien",
         
         # F
-        "FAR": "Färöer", "FIJ": "Fiji", "FIN": "Finland", "FRA": "France",
+        "FAR": "Färöer", "FIJ": "Fidschi", "FIN": "Finnland", "FRA": "Frankreich",
         "FSM": "Mikronesien",
         
         # G
-        "GAB": "Gabon", "GAM": "Gambia", "GBR": "Great Britain", "GBS": "Guinea-Bissau",
-        "GEO": "Georgia", "GEQ": "Equatorial Guinea", "GER": "Germany", "GHA": "Ghana",
-        "GRE": "Greece", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
+        "GAB": "Gabun", "GAM": "Gambia", "GBR": "Großbritannien", "GBS": "Guinea-Bissau",
+        "GEO": "Georgien", "GEQ": "Äquatorialguinea", "GER": "Deutschland", "GHA": "Ghana",
+        "GRE": "Griechenland", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
         "GUM": "Guam", "GUY": "Guyana",
         
         # H-I
-        "HAI": "Haiti", "HKG": "Hong Kong", "HON": "Honduras", "HUN": "Hungary",
-        "INA": "Indonesia", "IND": "India", "IRI": "Iran", "IRL": "Ireland",
-        "IRQ": "Iraq", "ISL": "Iceland", "ISR": "Israel", "ISV": "Amerikanische Jungferninseln",
-        "ITA": "Italy", "IVB": "Britische Jungferninseln",
+        "HAI": "Haiti", "HKG": "Hongkong", "HON": "Honduras", "HUN": "Ungarn",
+        "INA": "Indonesien", "IND": "Indien", "IRI": "Iran", "IRL": "Irland",
+        "IRQ": "Irak", "ISL": "Island", "ISR": "Israel", "ISV": "Amerikanische Jungferninseln",
+        "ITA": "Italien", "IVB": "Britische Jungferninseln",
         
         # J-K
-        "JAM": "Jamaica", "JOR": "Jordan", "JPN": "Japan", "KAZ": "Kazakhstan",
-        "KEN": "Kenya", "KGZ": "Kyrgyzstan", "KIR": "Kiribati", "KOR": "South Korea",
-        "KOS": "Kosovo", "KSA": "Saudi Arabia", "KUW": "Kuwait",
+        "JAM": "Jamaika", "JOR": "Jordanien", "JPN": "Japan", "KAZ": "Kasachstan",
+        "KEN": "Kenia", "KGZ": "Kirgisistan", "KIR": "Kiribati", "KOR": "Südkorea",
+        "KOS": "Kosovo", "KSA": "Saudi-Arabien", "KUW": "Kuwait",
         
         # L
-        "LAO": "Laos", "LAT": "Latvia", "LBA": "Libya", "LBN": "Lebanon",
-        "LBR": "Liberia", "LCA": "Saint Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
-        "LTU": "Lithuania", "LUX": "Luxembourg",
+        "LAO": "Laos", "LAT": "Lettland", "LBA": "Libyen", "LBN": "Libanon",
+        "LBR": "Liberia", "LCA": "St. Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
+        "LTU": "Litauen", "LUX": "Luxemburg",
         
         # M
-        "MAC": "Macau", "MAD": "Madagascar", "MAR": "Morocco", "MAS": "Malaysia",
-        "MAW": "Malawi", "MDA": "Moldau", "MDV": "Maldives", "MEX": "Mexico",
-        "MGL": "Mongolia", "MHL": "Marshallinseln", "MKD": "Nordmazedonien", "MLI": "Mali",
-        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mozambique",
+        "MAC": "Macau", "MAD": "Madagaskar", "MAR": "Marokko", "MAS": "Malaysia",
+        "MAW": "Malawi", "MDA": "Moldau", "MDV": "Malediven", "MEX": "Mexiko",
+        "MGL": "Mongolei", "MHL": "Marshallinseln", "MKD": "Nordmazedonien", "MLI": "Mali",
+        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mosambik",
         "MRI": "Mauritius", "MTN": "Mauretanien", "MYA": "Myanmar",
         
         # N
-        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Netherlands", "NEP": "Nepal",
-        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norway", "NRU": "Nauru",
-        "NZL": "New Zealand",
+        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Niederlande", "NEP": "Nepal",
+        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norwegen", "NRU": "Nauru",
+        "NZL": "Neuseeland",
         
         # O-P
         "OMA": "Oman", "PAK": "Pakistan", "PAN": "Panama", "PAR": "Paraguay",
-        "PER": "Peru", "PHI": "Philippines", "PLE": "Palestine", "PLW": "Palau",
-        "PNG": "Papua New Guinea", "POL": "Poland", "POR": "Portugal", "PRK": "North Korea",
+        "PER": "Peru", "PHI": "Philippinen", "PLE": "Palästina", "PLW": "Palau",
+        "PNG": "Papua-Neuguinea", "POL": "Polen", "POR": "Portugal", "PRK": "Nordkorea",
         "PUR": "Puerto Rico",
         
         # Q-R
-        "QAT": "Qatar", "ROU": "Romania", "RSA": "South Africa", "RUS": "Russia",
-        "RWA": "Rwanda",
+        "QAT": "Katar", "ROU": "Rumänien", "RSA": "Südafrika", "RUS": "Russland",
+        "RWA": "Ruanda",
         
         # S
-        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychelles", "SGP": "Singapore",
-        "SKN": "Saint Kitts and Nevis", "SLE": "Sierra Leone", "SLO": "Slovenia",
-        "SMR": "San Marino", "SOL": "Salomonen", "SOM": "Somalia", "SRB": "Serbia",
-        "SRI": "Sri Lanka", "SSD": "Südsudan", "STP": "Sao Tome and Principe",
-        "SUD": "Sudan", "SUI": "Switzerland", "SUR": "Suriname", "SVK": "Slovakia",
-        "SWE": "Sweden", "SWZ": "Eswatini", "SYR": "Syria",
+        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychellen", "SGP": "Singapur",
+        "SKN": "St. Kitts und Nevis", "SLE": "Sierra Leone", "SLO": "Slowenien",
+        "SMR": "San Marino", "SOL": "Salomonen", "SOM": "Somalia", "SRB": "Serbien",
+        "SRI": "Sri Lanka", "SSD": "Südsudan", "STP": "São Tomé und Príncipe",
+        "SUD": "Sudan", "SUI": "Schweiz", "SUR": "Suriname", "SVK": "Slowakei",
+        "SWE": "Schweden", "SWZ": "Eswatini", "SYR": "Syrien",
         
         # T
-        "TAN": "Tanzania", "TCA": "Turks and Caicos Islands", "TGA": "Tonga",
-        "THA": "Thailand", "TJK": "Tajikistan", "TKM": "Turkmenistan",
-        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad and Tobago",
-        "TUN": "Tunisia", "TUR": "Turkey", "TUV": "Tuvalu",
+        "TAN": "Tansania", "TCA": "Turks- und Caicosinseln", "TGA": "Tonga",
+        "THA": "Thailand", "TJK": "Tadschikistan", "TKM": "Turkmenistan",
+        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad und Tobago",
+        "TUN": "Tunesien", "TUR": "Türkei", "TUV": "Tuvalu",
         
         # U-V
-        "UAE": "United Arab Emirates", "UGA": "Uganda", "UKR": "Ukraine",
-        "URU": "Uruguay", "USA": "USA", "UZB": "Uzbekistan", "VAN": "Vanuatu",
-        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "Saint Vincent and the Grenadines",
+        "UAE": "Vereinigte Arabische Emirate", "UGA": "Uganda", "UKR": "Ukraine",
+        "URU": "Uruguay", "USA": "USA", "UZB": "Usbekistan", "VAN": "Vanuatu",
+        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "St. Vincent und die Grenadinen",
         
         # Y-Z
-        "YEM": "Yemen", "ZAM": "Zambia", "ZIM": "Zimbabwe",
+        "YEM": "Jemen", "ZAM": "Sambia", "ZIM": "Simbabwe",
         
         # Backwards compatibility
-        "GB": "Great Britain", "DE": "Germany", "NL": "Netherlands", "CH": "Switzerland",
-        "DK": "Denmark", "AT": "Austria", "BE": "Belgium", "FR": "France",
-        "IT": "Italy", "ES": "Spain", "SE": "Sweden", "NO": "Norway",
-        "PL": "Poland", "CZ": "Czech Republic", "HU": "Hungary", "RO": "Romania",
-        "IE": "Ireland", "PT": "Portugal",
+        "GB": "Großbritannien", "DE": "Deutschland", "NL": "Niederlande", "CH": "Schweiz",
+        "DK": "Dänemark", "AT": "Österreich", "BE": "Belgien", "FR": "Frankreich",
+        "IT": "Italien", "ES": "Spanien", "SE": "Schweden", "NO": "Norwegen",
+        "PL": "Polen", "CZ": "Tschechien", "HU": "Ungarn", "RO": "Rumänien",
+        "IE": "Irland", "PT": "Portugal",
     }
     
     return names.get(ioc_code.upper(), ioc_code)
@@ -409,7 +426,7 @@ class FooterCanvas(canvas.Canvas):
                 pass
 
 def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
-    # Extrahiere Prüfungsnummer und Division für XXY Format
+    # Extrahiere Prüfungsnummer und Abteilung für XXY Format
     comp = starterlist.get("competition") or {}
     comp_number_raw = comp.get("number") or starterlist.get("competitionNumber") or "99"
     
@@ -418,21 +435,68 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     match = re.search(r'(\d+)', str(comp_number_raw))
     comp_number = match.group(1) if match else "99"
     
-    # Hole Divisionsnummer (falls vorhanden)
+    # Hole Abteilungsnummer (falls vorhanden)
     division = starterlist.get("division") or starterlist.get("divisionNumber") or comp.get("division") or 0
     
-    # Formatiere als XXY: XX = Competition (2-stellig), Y = Division (1-stellig)
-    # Verwende den übergebenen filename Parameter (bereits vollständiger Pfad!)
-    # KEIN hardcodierter "Ausgabe" Ordner mehr!
+    # Formatiere als XXY: XX = Prüfung (2-stellig), Y = Abteilung (1-stellig)
+    try:
+        comp_num = int(comp_number)
+        div_num = int(division) if division else 0
+        output_filename = f"{comp_num:02d}{div_num:01d}.pdf"
+    except (ValueError, TypeError):
+        output_filename = "990.pdf"
     
-    # Berechne dynamischen bottomMargin basierend auf Sponsorenleiste
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    bottom_margin = spacing_bottom_cm * 10 * mm  # cm in mm
+    # Verwende übergebenen filename statt lokalen Ausgabe-Pfad
     
-    doc = SimpleDocTemplate(
+    # Verwende übergebenen filename
+    
+    # Berechne dynamische Ränder basierend auf Sponsorenleiste
+    spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
+    
+    print(f"PDF LISTE DEBUG: Doppelseitig - Vorderseite Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm, Rückseite: kein extra Rand")
+    
+    top_margin_front = spacing_top_cm * 10
+    top_margin_back = 1.0 * 10
+    bottom_margin_front = spacing_bottom_cm * 10
+    bottom_margin_back = 1.0 * 10
+    
+    class ListeDocTemplate(SimpleDocTemplate):
+        def __init__(self, filename, **kw):
+            self.allowSplitting = 1
+            self._page_count = 0
+            SimpleDocTemplate.__init__(self, filename, **kw)
+            
+            frame_front = Frame(
+                8*mm, bottom_margin_front*mm,
+                A4[0] - 16*mm, A4[1] - top_margin_front*mm - bottom_margin_front*mm,
+                id='front',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            frame_back = Frame(
+                8*mm, bottom_margin_back*mm,
+                A4[0] - 16*mm, A4[1] - top_margin_back*mm - bottom_margin_back*mm,
+                id='back',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            self.addPageTemplates([
+                PageTemplate(id='Front', frames=[frame_front]),
+                PageTemplate(id='Back', frames=[frame_back])
+            ])
+        
+        def afterPage(self):
+            self._page_count += 1
+            if self._page_count % 2 == 1:
+                self._nextPageTemplateIndex = 1  # Back
+            else:
+                self._nextPageTemplateIndex = 0  # Front
+    
+    doc = ListeDocTemplate(
         filename, pagesize=A4,
-        leftMargin=8*mm, rightMargin=8*mm,
-        topMargin=8*mm, bottomMargin=bottom_margin  # Dynamisch berechnet
+        rightMargin=0, leftMargin=0,
+        topMargin=0, bottomMargin=0
     )
 
     styles = getSampleStyleSheet()
@@ -450,18 +514,14 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     elements = []
 
     # LOGO DIREKT AM ANFANG - Prüfungsspezifisches Logo-System mit DPI-Korrektur
-    # --- LOGO + HEADER IN TABELLE (wie pdf_std_spr_zucht_komp) ---
     # --- LISTE: Nur Abstände, kein Header ---
     show = starterlist.get("show") or {}
     comp = starterlist.get("competition") or {}
     
-    spacing_top_cm = starterlist.get("spacingTopCm", 0.0)
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    
-    if spacing_top_cm > 0:
-        elements.append(Spacer(1, spacing_top_cm * 10 * mm))
+    # Doppelseitig: Ränder werden durch Frame-Alternierung gesteuert
 
-    # --- KOPFZEILE: STARTING ORDER (links) und Datum/Ort (rechts) ---
+
+    # --- KOPFZEILE: STARTERLISTE (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
     
     # Zeit-Logik wie im PDF-Template
@@ -491,7 +551,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     
     location = comp.get("location") or starterlist.get("location") or ""
     
-    header_left = "<b>STARTING ORDER</b>"
+    header_left = "<b>STARTERLISTE</b>"
     header_right = ""
     if start_raw:
         formatted_time = _fmt_header_datetime(start_raw)
@@ -503,8 +563,8 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         header_right = location
     
     if header_right:
-        style_header_left = ParagraphStyle("header_left", parent=styles["Normal"], fontSize=10, alignment=0)  # linksbündig
-        style_header_right = ParagraphStyle("header_right", parent=styles["Normal"], fontSize=10, alignment=2)  # rechtsbündig
+        style_header_left = ParagraphStyle("header_left", parent=styles["Normal"], fontSize=10, alignment=0)
+        style_header_right = ParagraphStyle("header_right", parent=styles["Normal"], fontSize=10, alignment=2)
         
         header_table = Table(
             [[Paragraph(header_left, style_header_left), Paragraph(header_right, style_header_right)]],
@@ -517,7 +577,8 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         elements.append(Spacer(1, 3*mm))
 
 
-    # --- TABELLE MIT ABTEILUNGSLOGIK VOM STANDARD TEMPLATE ---
+    # --- TABELLE MIT 3 RICHTER-SPALTEN (7 Spalten total) MIT GRUPPIERUNGSLOGIK ---
+    starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
     breaks_by_after = {}
     for b in breaks:
@@ -537,14 +598,14 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     data_texts = []
     meta = []
-    data_texts.append(["<b># / CNO</b>", "<b>Athlete / Horse</b><br/><font size=7>Age / Colour / Sex / Sire x Sire Dam / Owner / Breeder</font>", "<b><font size=6>Nat</font></b>", f"<b>{judge_positions[0]}</b>", f"<b>{judge_positions[1]}</b>", f"<b>{judge_positions[2]}</b>", f"<b>{judge_positions[3]}</b>", f"<b>{judge_positions[4]}</b>", "<b>Total</b>"])
+    data_texts.append(["<b># / KNr</b>", "<b>Reiter / Pferd</b><br/><font size=7>Alter / Farbe / Geschlecht / Vater x Muttervater / Besitzer / Züchter</font>", "<b><font size=6>Nat</font></b>", f"<b>{judge_positions[0]}</b>", f"<b>{judge_positions[1]}</b>", f"<b>{judge_positions[2]}</b>", "<b>Total</b>"])
     meta.append({"type":"header"})
     
     # WICHTIG: Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
     if 0 in breaks_by_after:
         for br in breaks_by_after[0]:
             pause_text = _format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-            data_texts.append([pause_text, "", "", "", "", "", "", "", ""])  # 9 Spalten (5 Richter)
+            data_texts.append([pause_text, "", "", "", "", "", ""])  # 7 Spalten
             meta.append({"type":"pause"})
 
     # GRUPPIERUNGSLOGIK VOM STANDARD TEMPLATE ÜBERNOMMEN - ABER VEREINFACHT
@@ -558,8 +619,8 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         # Nur wenn groupNumber existiert und > 0
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             # Neue Gruppe erkannt - Gruppen-Header hinzufügen
-            group_text = f"Division {starter_group}"
-            data_texts.append([group_text, "", "", "", "", "", "", "", ""])  # 9 Spalten
+            group_text = f"Abteilung {starter_group}"
+            data_texts.append([group_text, "", "", "", "", "", ""])  # 7 Spalten
             meta.append({"type":"group"})
             
             current_group = starter_group
@@ -698,7 +759,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                     from datetime import datetime
                     current_year = datetime.now().year
                     age = current_year - int(breeding_season)
-                    details_parts.append(f"{age}y.")
+                    details_parts.append(f"{age}jähr.")
                 except:
                     pass
             
@@ -731,9 +792,9 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             
             owner_breeder_parts = []
             if owner:
-                owner_breeder_parts.append(f"O: {owner}")
+                owner_breeder_parts.append(f"B: {owner}")
             if breeder:
-                owner_breeder_parts.append(f"B: {breeder}")
+                owner_breeder_parts.append(f"Z: {breeder}")
             
             if owner_breeder_parts:
                 owner_breeder_text = " / ".join(owner_breeder_parts)
@@ -781,8 +842,9 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             if nat_code_display:
                 nat_cell = Paragraph(f'<font size="6">{nat_code_display}</font>', style_pos)
 
-        data_texts.append([start_knr_table, combined_content, nat_cell, "", "", "", "", "", ""])  # 9 Spalten
+        data_texts.append([start_knr_table, combined_content, nat_cell, "", "", "", ""])  # 7 Spalten
         meta.append({"type":"starter","withdrawn":withdrawn_flag, "horsConcours": hors_concours})
+
 
         # Breaks verarbeiten
         try:
@@ -792,49 +854,42 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         if cur is not None and cur in breaks_by_after:
             for br in breaks_by_after[cur]:
                 pause_text = _format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-                data_texts.append([pause_text, "", "", "", "", "", "", "", ""])  # 9 Spalten
+                data_texts.append([pause_text, "", "", "", "", "", ""])  # 7 Spalten
                 meta.append({"type":"pause"})
 
-    # --- ZURÜCK ZUR EINFACHEN TABELLENLÖSUNG (ohne komplexe Gruppierung) ---
-    
-    # Spaltenbreiten definieren - MIT NAT-SPALTE, Start+KNr kombiniert
-    page_width = A4[0] - doc.leftMargin - doc.rightMargin
-    col1 = 22*mm  # Start+KNr kombiniert (10mm + 12mm = 22mm)
+    # --- Tabelle erstellen (7 Spalten) ---
+    # Spaltenbreiten - MIT NAT-SPALTE, Start+KNr kombiniert
+    page_width = A4[0] - 16*mm  # 8mm links + 8mm rechts (Frame-Ränder)
+    col1 = 22*mm  # Start+KNr kombiniert
     col_nat = 8*mm  # Nat (Flagge+Kürzel)
-    col_judges = [12*mm] * 6  # 5 Richter + Total
-    col2 = page_width - col1 - col_nat - sum(col_judges)  # Reiter+Pferd (Rest)
-    col_widths = [col1, col2, col_nat] + col_judges  # 9 Spalten total
+    col_judge = 12*mm
+    col_total = 15*mm
+    col2 = page_width - col1 - col_nat - (3*col_judge) - col_total  # Reiter+Pferd
+    col_widths = [col1, col2, col_nat, col_judge, col_judge, col_judge, col_total]  # 7 Spalten
 
     table_rows = []
     for i, row in enumerate(data_texts):
-        if i >= len(meta):  # Sicherheitsprüfung
-            continue
-            
         m = meta[i]
         if m["type"] == "header":
             table_rows.append([
                 Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr_left),
                 Paragraph(row[2], style_hdr), Paragraph(row[3], style_hdr),
                 Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr),
-                Paragraph(row[6], style_hdr), Paragraph(row[7], style_hdr),
-                Paragraph(row[8], style_hdr)  # 9 Spalten
+                Paragraph(row[6], style_hdr)  # 7 Spalten
             ])
         elif m["type"] == "group":
-            # GRUPPIERUNGSLOGIK - LINKSBÜNDIG (nur wenn Gruppen vorhanden)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_hdr_left), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)  # 9 Spalten
+                Paragraph("", style_sub)  # 7 Spalten
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)  # 9 Spalten
+                Paragraph("", style_sub)  # 7 Spalten
             ])
         else:
             withdrawn = m.get("withdrawn", False)
@@ -842,14 +897,14 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                 if not text: return Paragraph("", s)
                 return Paragraph(f"<strike>{text}</strike>" if withdrawn else text, s)
             
-            # Spalte 1 (Start+KNr) ist Table, nicht wrappen!
+            # Spalte 1 (Start+KNr) ist Table
             start_knr_value = row[0]
             if isinstance(start_knr_value, Table):
                 start_knr_display = start_knr_value
             else:
                 start_knr_display = Paragraph(str(start_knr_value) if start_knr_value else "", style_pos)
             
-            # Spalte 3 (Nat) ist Table/Image/Paragraph, nicht wrappen!
+            # Spalte 3 (Nat) ist Table/Image/Paragraph
             nat_value = row[2]
             if isinstance(nat_value, (Image, Table)):
                 nat_cell_display = nat_value
@@ -861,10 +916,9 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             table_rows.append([
                 start_knr_display,  # Start+KNr Mini-Tabelle
                 maybe_strike(row[1], style_horse),  # Reiter+Pferd
-                nat_cell_display,  # Nat nicht wrappen!
+                nat_cell_display,  # Nat
                 maybe_strike(row[3], style_pos), maybe_strike(row[4], style_pos),
-                maybe_strike(row[5], style_pos), maybe_strike(row[6], style_pos),
-                maybe_strike(row[7], style_pos), maybe_strike(row[8], style_pos)  # 9 Spalten
+                maybe_strike(row[5], style_pos), maybe_strike(row[6], style_pos)  # 7 Spalten
             ])
 
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
@@ -872,13 +926,13 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
         ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),  # Start+KNr zentriert
-        ("ALIGN", (1,0), (1,-1), "LEFT"),    # Reiter+Pferd links
-        ("ALIGN", (2,0), (-1,-1), "CENTER"), # Rest zentriert
+        ("ALIGN", (0,0), (0,-1), "CENTER"),  # Start+KNr
+        ("ALIGN", (1,0), (1,-1), "LEFT"),    # Reiter+Pferd
+        ("ALIGN", (2,0), (-1,-1), "CENTER"), # Rest
     ])
 
-    # Styling für spezielle Zeilen
-    starter_count = 0  # Zähler für Starter-Zeilen (für Zebra-Streifen)
+    # Zebra-Streifen mit korrekter Pausen-Logik
+    starter_count = 0
     
     for ri in range(1, len(table_rows)):
         if ri < len(meta):
@@ -887,38 +941,22 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                 ts.add("SPAN", (0,ri), (-1,ri))
                 ts.add("BACKGROUND", (0,ri), (-1,ri), colors.Color(0.9, 0.9, 0.9))
                 ts.add("ALIGN", (0,ri), (-1,ri), "LEFT")
-                # Counter zurücksetzen für neue Division
                 starter_count = 0
             elif m and m.get("type") == "pause":
                 ts.add("SPAN", (0,ri), (-1,ri))
                 ts.add("ALIGN", (0,ri), (-1,ri), "CENTER")
-                # Pause bekommt entgegengesetzte Farbe vom vorherigen Starter
                 prev_was_gray = (starter_count - 1) % 2 == 1
-                if not prev_was_gray:  # Vorheriger war weiß → Pause grau
+                if not prev_was_gray:
                     ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
-                else:  # Vorheriger war grau → Pause weiß (kein Background)
-                    pass
-                # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
                 starter_count -= 1
             elif m and m.get("type") == "starter":
-                # Zebra-Streifen: ungerade Starter sind grau (1, 3, 5, ...)
                 is_gray_zebra = starter_count % 2 == 1
+                if is_gray_zebra:
+                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
                 
-                # Withdrawn: Behält die Zebra-Farbe, Text wird nur grau
-                is_withdrawn = m.get("withdrawn", False)
-                
-                if is_withdrawn:
-                    # Withdrawn: Zebra-Farbe beibehalten, nur Text grau machen
-                    if is_gray_zebra:
-                        ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
-                    # Bei weiß: kein Background (bleibt weiß)
+                if m.get("withdrawn", False):
                     ts.add("TEXTCOLOR", (0,ri), (-1,ri), colors.darkgrey)
-                else:
-                    # Normal: Nur Zebra-Farbe
-                    if is_gray_zebra:
-                        ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
                 
-                # WICHTIG: Counter IMMER erhöhen, auch bei withdrawn!
                 starter_count += 1
 
     t.setStyle(ts)

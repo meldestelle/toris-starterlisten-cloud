@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_dre_402c_logo.py - Speziell für Richtverfahren 402.C
+# templates/stream/liste_dre_402c_1.py
+# Listen-Version: Einseitig - Jede Seite hat Rand oben + unten (für einseitig bedrucktes Sponsorenpapier)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import BaseDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
 
@@ -77,7 +77,7 @@ def _process_information_text(text):
         return ""
     text = text.lstrip('\n')
     text = text.replace('\n', '<br/>')
-    pass  # text already processed
+    text = f"<b>{text}</b>"
     return text
 
 def _get_judge_data_for_display_402c(judges, starterlist):
@@ -133,24 +133,6 @@ def _get_judge_data_for_display_402c(judges, starterlist):
     result.sort(key=sort_key)
     return result
 
-
-def get_nationality_code(nationality_str):
-    """Konvertiert IOC-Codes zu ISO 3166-1 alpha-3 Codes"""
-    if not nationality_str:
-        return ""
-    
-    ioc_to_iso = {
-        "GER": "DEU", "NED": "NLD", "SUI": "CHE", "DEN": "DNK", "CRO": "HRV", "GRE": "GRC",
-        "BUL": "BGR", "RSA": "ZAF", "POR": "PRT", "LAT": "LVA", "UAE": "ARE", "CHI": "CHL",
-        "URU": "URY", "SLO": "SVN", "MAS": "MYS", "GBR": "GBR", "AUT": "AUT", "BEL": "BEL",
-        "FRA": "FRA", "ITA": "ITA", "ESP": "ESP", "SWE": "SWE", "NOR": "NOR", "POL": "POL",
-        "CZE": "CZE", "HUN": "HUN", "ROU": "ROU", "IRL": "IRL", "USA": "USA", "CAN": "CAN",
-        "AUS": "AUS", "NZL": "NZL", "JPN": "JPN", "KOR": "KOR", "CHN": "CHN", "BRA": "BRA",
-        "ARG": "ARG", "MEX": "MEX", "RUS": "RUS", "UKR": "UKR", "TUR": "TUR", "ISR": "ISR",
-    }
-    
-    code = nationality_str.upper()
-    return ioc_to_iso.get(code, code[:3] if len(code) >= 3 else code)
 
 def get_country_name(ioc_code):
     """Returns full country name in German - Complete list for all 250 countries"""
@@ -264,114 +246,45 @@ def get_country_name(ioc_code):
     
     return names.get(ioc_code.upper(), ioc_code)
 
-
-def find_flag_image(nat_code):
-    """Sucht Flagge - Vollständiges ISO→IOC Mapping"""
-    if not nat_code:
-        return None
+def render(starterlist: dict, filename: str):
+    # Hole Abstände aus starterlist (in cm)
+    spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
     
-    iso_to_ioc = {
-        "AFG": "AFG", "ALB": "ALB", "DZA": "ALG", "ASM": "ASA", "AND": "AND", "AGO": "ANG",
-        "AUT": "AUT", "AZE": "AZE", "BHS": "BAH", "BHR": "BRN", "BGD": "BAN", "BRB": "BAR",
-        "BLR": "BLR", "BEL": "BEL", "BRA": "BRA", "BGR": "BUL", "CAN": "CAN", "CHL": "CHI",
-        "CHN": "CHN", "HRV": "CRO", "CUB": "CUB", "CYP": "CYP", "CZE": "CZE", "DNK": "DEN",
-        "EGY": "EGY", "EST": "EST", "FIN": "FIN", "FRA": "FRA", "DEU": "GER", "GRC": "GRE",
-        "HUN": "HUN", "ISL": "ISL", "IND": "IND", "IDN": "INA", "IRN": "IRI", "IRL": "IRL",
-        "ISR": "ISR", "ITA": "ITA", "JAM": "JAM", "JPN": "JPN", "KAZ": "KAZ", "KOR": "KOR",
-        "LVA": "LAT", "LTU": "LTU", "LUX": "LUX", "MYS": "MAS", "MEX": "MEX", "NLD": "NED",
-        "NZL": "NZL", "NOR": "NOR", "POL": "POL", "PRT": "POR", "ROU": "ROU", "RUS": "RUS",
-        "ZAF": "RSA", "SVN": "SLO", "ESP": "ESP", "SWE": "SWE", "CHE": "SUI", "TUR": "TUR",
-        "UKR": "UKR", "ARE": "UAE", "GBR": "GBR", "USA": "USA", "URY": "URU",
-        # Direct IOC codes fallback
-        "GER": "GER", "NED": "NED", "SUI": "SUI", "DEN": "DEN", "CRO": "CRO",
-    }
+    print(f"PDF LISTE DEBUG: Einseitig - Alle Seiten Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm")
+    print(f"PDF LISTE DEBUG: Erstelle PDF: {filename}")
     
-    flag_code = iso_to_ioc.get(nat_code.upper(), nat_code.upper())
+    top_margin = spacing_top_cm * 10
+    bottom_margin = spacing_bottom_cm * 10
     
-    for path in [f"flags/{flag_code}.png", f"C:/Python/flags/{flag_code}.png"]:
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def get_sponsor_bar_height():
-    """Ermittelt die tatsächliche Höhe der Sponsorenleiste"""
-    sponsor_path = "logos/sponsorenleiste.png"
-    if os.path.exists(sponsor_path):
-        try:
-            from reportlab.lib.utils import ImageReader
-            img = ImageReader(sponsor_path)
-            img_width_px, img_height_px = img.getSize()
+    class ListeDocTemplate(BaseDocTemplate):
+        def __init__(self, filename, **kw):
+            self.allowSplitting = 1
+            BaseDocTemplate.__init__(self, filename, **kw)
             
-            # Zielbreite: 190mm (7.5 inches)
-            target_width = 190*mm
+            frame_all = Frame(
+                8*mm, bottom_margin*mm,
+                A4[0] - 16*mm, A4[1] - top_margin*mm - bottom_margin*mm,
+                id='all',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
             
-            # Berechne proportionale Höhe basierend auf Originalverhältnis
-            aspect_ratio = img_height_px / img_width_px
-            calculated_height = target_width * aspect_ratio
-            
-            return calculated_height
-        except:
-            return 25*mm  # Fallback
-    return 0  # Keine Sponsorenleiste
-
-class FooterCanvas(canvas.Canvas):
-    """Canvas mit Sponsorenleiste im Footer"""
-    def __init__(self, *args, **kwargs):
-        canvas.Canvas.__init__(self, *args, **kwargs)
-        self.sponsor_height = get_sponsor_bar_height()
-        
-    def showPage(self):
-        self.draw_footer()
-        canvas.Canvas.showPage(self)
-        
-    def draw_footer(self):
-        sponsor_path = "logos/sponsorenleiste.png"
-        if os.path.exists(sponsor_path):
-            try:
-                # Sponsorenleiste unten zentriert - DYNAMISCHE HÖHE
-                img_width = 190*mm  # 7.5 inches = ca. 190mm
-                img_height = self.sponsor_height  # Dynamisch berechnet
-                x = (A4[0] - img_width) / 2  # Zentriert
-                y = 7*mm  # 7mm vom unteren Rand
-                self.drawImage(sponsor_path, x, y, width=img_width, height=img_height, 
-                              preserveAspectRatio=True, mask='auto')
-            except:
-                pass
-
-def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
-    # Extrahiere Prüfungsnummer und Abteilung für XXY Format
-    comp = starterlist.get("competition") or {}
-    comp_number_raw = comp.get("number") or starterlist.get("competitionNumber") or "99"
+            self.addPageTemplates([
+                PageTemplate(id='AllPages', frames=[frame_all])
+            ])
     
-    # Extrahiere nur die Zahl aus comp_number (z.B. "14start" → "14", "5a" → "5")
-    import re
-    match = re.search(r'(\d+)', str(comp_number_raw))
-    comp_number = match.group(1) if match else "99"
-    
-    # Hole Abteilungsnummer (falls vorhanden)
-    division = starterlist.get("division") or starterlist.get("divisionNumber") or comp.get("division") or 0
-    
-    # Formatiere als XXY: XX = Prüfung (2-stellig), Y = Abteilung (1-stellig)
-    # Verwende den übergebenen filename Parameter (bereits vollständiger Pfad!)
-
-    # KEIN hardcodierter "Ausgabe" Ordner mehr!
-
-    # LISTEN: Nutze spacingBottomCm statt Sponsorenleiste
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    bottom_margin = spacing_bottom_cm * 10 * mm  # cm in mm
-    
-    doc = SimpleDocTemplate(
-        filename, pagesize=A4,
-        leftMargin=8*mm, rightMargin=8*mm,
-        topMargin=8*mm, bottomMargin=bottom_margin
+    doc = ListeDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=0, leftMargin=0,
+        topMargin=0, bottomMargin=0
     )
 
     styles = getSampleStyleSheet()
-    style_show = ParagraphStyle("show", parent=styles["Heading1"], fontSize=14, leading=16, spaceAfter=2)
-    style_comp = ParagraphStyle("comp", parent=styles["Normal"], fontSize=11, leading=13, spaceAfter=4)
-    style_sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=10, leading=12, spaceAfter=4)
-    style_info = ParagraphStyle("info", parent=styles["Normal"], fontSize=10, leading=12, spaceAfter=4)
+    style_show = ParagraphStyle("show", parent=styles["Heading1"], fontSize=18, leading=15, spaceAfter=10)
+    style_comp = ParagraphStyle("comp", parent=styles["Normal"], fontSize=10, leading=15)
+    style_sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, leading=15)
+    style_info = ParagraphStyle("info", parent=styles["Normal"], fontSize=11, leading=15)
     style_hdr = ParagraphStyle("hdr", parent=styles["Normal"], fontSize=9, alignment=1)
     style_hdr_left = ParagraphStyle("hdr_left", parent=styles["Normal"], fontSize=9, alignment=0)
     style_pos = ParagraphStyle("pos", parent=styles["Normal"], fontSize=9, alignment=1)
@@ -379,19 +292,14 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     style_pause = ParagraphStyle("pause", parent=styles["Normal"], fontSize=9, alignment=1)
 
     elements = []
-
-    # LOGO
-    # Hole comp und show für später (Richter etc.)
-    show = starterlist.get("show") or {}
+    
+    # Einseitig: Alle Seiten gleich (Rand oben + unten)
+    
+    # KEINE Kopfzeile - direkt zur Tabelle
+    
+    # Competition-Daten
     comp = starterlist.get("competition") or {}
     
-    spacing_top_cm = starterlist.get("spacingTopCm", 0.0)
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    
-    # Ersten Spacer einfügen
-    if spacing_top_cm > 0:
-        elements.append(Spacer(1, spacing_top_cm * 10 * mm))
-
     # --- KOPFZEILE: STARTERLISTE (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
     
@@ -447,6 +355,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         elements.append(header_table)
         elements.append(Spacer(1, 3*mm))
 
+
     starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
     breaks_by_after = {}
@@ -464,12 +373,9 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     data_texts = []
     meta = []
-    data_texts = []
-    meta = []
-    # 402.C hat Aufgabe + Qualität + Total
-    data_texts.append(["<b># / KNr</b>", "<b>Reiter / Pferd</b><br/><font size=7>Alter / Farbe / Geschlecht / Vater x Muttervater / Besitzer / Züchter</font>", "<b><font size=6>Nat</font></b>", "<b>Aufgabe</b>", "<b>Qualität</b>", "<b>Total</b>"])
+    data_texts.append(["<b>Start</b>", "<b>KoNr.</b>", "<b>Reiter / Pferd</b><br/><font size=7>Geschlecht / Farbe / Geboren / Vater x Muttervater / Besitzer / Züchter</font>", "<b>Aufgabe</b>", "<b>Qualität</b>", "<b>Total</b>"])
     meta.append({"type":"header"})
-
+    
     # WICHTIG: Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
     if 0 in breaks_by_after:
         for br in breaks_by_after[0]:
@@ -486,7 +392,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             group_text = f"Abteilung {starter_group}"
-            data_texts.append([group_text, "", "", "", "", ""])  # 6 Spalten
+            data_texts.append([group_text, "", "", "", "", ""])
             meta.append({"type":"group"})
             
             current_group = starter_group
@@ -496,83 +402,28 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         hors_concours = bool(s.get("horsConcours", False))  # Außer Konkurrenz
         tstr = _fmt_time(s.get("startTime"))
         
-        # Zeit nur beim ersten Starter pro Gruppe zeigen, oder wenn keine Gruppierung
         if starter_group is None or starter_group == 0 or not group_start_time_shown:
             start_time_display = tstr
             if starter_group is not None and starter_group > 0:
-                group_start_time_shown = True  # Markiere Zeit als gezeigt für diese Gruppe
+                group_start_time_shown = True
         else:
-            start_time_display = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
+            start_time_display = ""
         
+        # Startnummer mit optionalem AK-Zusatz
+        if hors_concours:
+            if start_time_display:
+                pos_html = f"<b>{nr}</b><br/><font size=7>AK</font><br/><font size=9>{start_time_display}</font>"
+            else:
+                pos_html = f"<b>{nr}</b><br/><font size=7>AK</font>"
+        else:
+            pos_html = f"<b>{nr}</b><br/><font size=9>{start_time_display}</font>" if start_time_display else f"<b>{nr}</b>"
+
         horses = s.get("horses") or []
         cno = ""
         if horses:
             horse = horses[0]
             cno = str(horse.get("cno", ""))
-        
-        # Prüfe withdrawn-Status VOR der Mini-Tabelle Erstellung
-        withdrawn_flag = bool(s.get("withdrawn", False))
-        
-        # Kombinierte Start+KNr Zelle als Mini-Tabelle
-        # Aufbau: [Zeit (wenn vorhanden)]
-        #         [Nr | KNr]
-        start_knr_data = []
-        
-        # Zeile 1: Startzeit (wenn vorhanden)
-        if start_time_display:
-            if withdrawn_flag:
-                time_text = f'<font size=8><strike>{start_time_display}</strike></font>'
-            else:
-                time_text = f'<font size=8>{start_time_display}</font>'
-            start_knr_data.append([Paragraph(time_text, style_pos)])
-        
-        # Zeile 2: Nr und KNr nebeneinander
-        # Links: Startnummer (mit optionalem AK)
-        if withdrawn_flag:
-            if hors_concours:
-                nr_text = f'<strike><b>{nr}</b></strike><br/><strike><font size=7>AK</font></strike>'
-            else:
-                nr_text = f'<strike><b>{nr}</b></strike>'
-            cno_text = f'<strike><font size=8>{cno}</font></strike>'
-        else:
-            if hors_concours:
-                nr_text = f'<b>{nr}</b><br/><font size=7>AK</font>'
-            else:
-                nr_text = f'<b>{nr}</b>'
-            cno_text = f'<font size=8>{cno}</font>'
-        
-        nr_cell = Paragraph(nr_text, style_pos)
-        knr_cell = Paragraph(cno_text, style_pos)
-        start_knr_data.append([nr_cell, knr_cell])
-        
-        # Erstelle die Mini-Tabelle
-        if start_time_display:
-            # Mit Zeit: 2 Zeilen
-            start_knr_table = Table(start_knr_data, colWidths=[11*mm, 11*mm])
-            start_knr_table.setStyle(TableStyle([
-                ('SPAN', (0,0), (1,0)),  # Zeit über beide Spalten
-                ('GRID', (0,1), (1,1), 0.25, colors.grey),  # Nur untere Zeile hat Trennlinie
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('LEFTPADDING', (0,0), (-1,-1), 1),
-                ('RIGHTPADDING', (0,0), (-1,-1), 1),
-                ('TOPPADDING', (0,0), (-1,-1), 1),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-            ]))
-        else:
-            # Ohne Zeit: nur 1 Zeile
-            start_knr_table = Table(start_knr_data, colWidths=[11*mm, 11*mm])
-            start_knr_table.setStyle(TableStyle([
-                ('GRID', (0,0), (1,0), 0.25, colors.grey),  # Trennlinie zwischen Nr und KNr
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('LEFTPADDING', (0,0), (-1,-1), 1),
-                ('RIGHTPADDING', (0,0), (-1,-1), 1),
-                ('TOPPADDING', (0,0), (-1,-1), 1),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-            ]))
 
-        # VERBESSERTE ABSTAMMUNGSDARSTELLUNG
         athlete = s.get("athlete") or {}
         rider_name = _safe_get(athlete, "name", "")
         club = _safe_get(athlete, "club", "")
@@ -617,28 +468,18 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                 content_parts.append(horse_line)
             
             details_parts = []
-            
-            # DYNAMISCHES ALTER statt Jahr - ZUERST
-            breeding_season = _safe_get(horse, "breedingSeason", "")
-            if breeding_season:
-                try:
-                    from datetime import datetime
-                    current_year = datetime.now().year
-                    age = current_year - int(breeding_season)
-                    details_parts.append(f"{age}jähr.")
-                except:
-                    pass
-            
-            # FARBE - ZWEITE
-            color = _safe_get(horse, "color", "")
-            if color:
-                details_parts.append(color)
-            
-            # GESCHLECHT - DRITTE
             sex = _safe_get(horse, "sex", "")
             sex_german = SEX_MAP.get(str(sex).upper(), sex)
             if sex_german:
                 details_parts.append(sex_german)
+            
+            color = _safe_get(horse, "color", "")
+            if color:
+                details_parts.append(color)
+                
+            year = _safe_get(horse, "breedingSeason", "")
+            if year:
+                details_parts.append(str(year))
                 
             sire = _safe_get(horse, "sire", "")
             damsire = _safe_get(horse, "damSire", "")
@@ -652,65 +493,29 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                 details_text = " / ".join(details_parts)
                 content_parts.append(f"<font size=7>{details_text}</font>")
             
-            # KORREKTE BESITZER/ZÜCHTER REIHENFOLGE
             owner = _safe_get(horse, "owner", "")
             breeder = _safe_get(horse, "breeder", "")
             
-            owner_breeder_parts = []
-            if owner:
-                owner_breeder_parts.append(f"B: {owner}")
-            if breeder:
-                owner_breeder_parts.append(f"Z: {breeder}")
-            
-            if owner_breeder_parts:
-                owner_breeder_text = " / ".join(owner_breeder_parts)
-                content_parts.append(f"<font size=7>{owner_breeder_text}</font>")
+            if owner and breeder:
+                # Beide vorhanden
+                if owner.strip() == breeder.strip():
+                    # Identisch: "B u. Z: Name"
+                    content_parts.append(f"<font size=6.5><i>B u. Z: {owner}</i></font>")
+                else:
+                    # Unterschiedlich: "B: Name / Z: Name"
+                    content_parts.append(f"<font size=6.5><i>B: {owner} / Z: {breeder}</i></font>")
+            elif owner:
+                # Nur Besitzer
+                content_parts.append(f"<font size=6.5><i>B: {owner}</i></font>")
+            elif breeder:
+                # Nur Züchter
+                content_parts.append(f"<font size=6.5><i>Z: {breeder}</i></font>")
 
         combined_content = "<br/>".join(content_parts)
 
-        # Nationalität mit Flagge + Kürzel (nationality wurde bereits oben definiert)
-        nat_code_iso = get_nationality_code(nationality) if nationality else ""
-        
-        # Display-Code: Rück-Konvertierung ISO → IOC für Anzeige
-        iso_to_display = {
-            "DEU": "GER", "NLD": "NED", "CHE": "SUI", "DNK": "DEN", "HRV": "CRO", "GRC": "GRE",
-            "BGR": "BUL", "ZAF": "RSA", "PRT": "POR", "LVA": "LAT", "ARE": "UAE", "CHL": "CHI",
-            "URY": "URU", "SVN": "SLO", "MYS": "MAS", "GBR": "GBR", "AUT": "AUT", "BEL": "BEL",
-            "FRA": "FRA", "ITA": "ITA", "ESP": "ESP", "SWE": "SWE", "NOR": "NOR", "POL": "POL",
-            "CZE": "CZE", "HUN": "HUN", "ROU": "ROU", "IRL": "IRL", "USA": "USA", "CAN": "CAN",
-        }
-        nat_code_display = iso_to_display.get(nat_code_iso, nat_code_iso)
-        
-        flag_path = find_flag_image(nat_code_iso)
-        
-        # Flagge + Kürzel in Mini-Tabelle
-        nat_cell = ""  # Default fallback
-        
-        if flag_path and os.path.exists(flag_path):
-            try:
-                flag_img = Image(flag_path, width=5*mm, height=3.5*mm)
-                # Mini-Tabelle: Flagge oben, Code unten
-                nat_mini_data = [[flag_img], [Paragraph(f'<font size="6">{nat_code_display}</font>', style_pos)]]
-                nat_cell = Table(nat_mini_data, colWidths=[5*mm])
-                nat_cell.setStyle(TableStyle([
-                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('LEFTPADDING', (0,0), (-1,-1), 0),
-                    ('RIGHTPADDING', (0,0), (-1,-1), 0),
-                    ('TOPPADDING', (0,0), (-1,-1), 0),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-                ]))
-            except Exception as e:
-                # Fallback: Nur Text-Kürzel
-                nat_cell = Paragraph(f'<font size="6">{nat_code_display}</font>', style_pos) if nat_code_display else ""
-        else:
-            # Fallback: Nur Text-Kürzel wenn vorhanden
-            if nat_code_display:
-                nat_cell = Paragraph(f'<font size="6">{nat_code_display}</font>', style_pos)
-
-        data_texts.append([start_knr_table, combined_content, nat_cell, "", "", ""])  # 6 Spalten
+        data_texts.append([pos_html, cno, combined_content, "", "", ""])
+        withdrawn_flag = bool(s.get("withdrawn", False))
         meta.append({"type":"starter","withdrawn":withdrawn_flag, "horsConcours": hors_concours})
-
 
         # Breaks
         try:
@@ -720,69 +525,52 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         if cur is not None and cur in breaks_by_after:
             for br in breaks_by_after[cur]:
                 pause_text = _format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-                data_texts.append([pause_text, "", "", "", "", ""])  # 6 Spalten
+                data_texts.append([pause_text, "", "", "", "", ""])
                 meta.append({"type":"pause"})
 
     # Tabelle erstellen - 6 SPALTEN
-    # Spaltenbreiten - MIT NAT-SPALTE, Start+KNr kombiniert
-    page_width = A4[0] - doc.leftMargin - doc.rightMargin
-    col1 = 22*mm  # Start+KNr kombiniert
-    col_nat = 8*mm  # Nat (Flagge+Kürzel)
+    page_width = A4[0] - 16*mm  # 8mm links + 8mm rechts
+    col1 = 18*mm
+    col2 = 16*mm
     col_aufgabe = 20*mm
     col_qualitaet = 20*mm
     col_total = 20*mm
-    col2 = page_width - col1 - col_nat - col_aufgabe - col_qualitaet - col_total  # Reiter+Pferd
-    col_widths = [col1, col2, col_nat, col_aufgabe, col_qualitaet, col_total]  # 6 Spalten
+    col3 = page_width - col1 - col2 - col_aufgabe - col_qualitaet - col_total
+    col_widths = [col1, col2, col3, col_aufgabe, col_qualitaet, col_total]
 
     table_rows = []
     for i, row in enumerate(data_texts):
         m = meta[i]
         if m["type"] == "header":
             table_rows.append([
-                Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr_left),
-                Paragraph(row[2], style_hdr), Paragraph(row[3], style_hdr),
-                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr)  # 6 Spalten
+                Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr),
+                Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr),
+                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr)
             ])
         elif m["type"] == "group":
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_hdr_left), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub)  # 6 Spalten
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub)  # 6 Spalten
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         else:
             withdrawn = m.get("withdrawn", False)
             def maybe_strike(text, s):
                 if not text: return Paragraph("", s)
                 return Paragraph(f"<strike>{text}</strike>" if withdrawn else text, s)
-            
-            # Spalte 1 (Start+KNr) ist Table
-            start_knr_value = row[0]
-            if isinstance(start_knr_value, Table):
-                start_knr_display = start_knr_value
-            else:
-                start_knr_display = Paragraph(str(start_knr_value) if start_knr_value else "", style_pos)
-            
-            # Spalte 3 (Nat) ist Table/Image/Paragraph
-            nat_value = row[2]
-            if isinstance(nat_value, (Image, Table)):
-                nat_cell_display = nat_value
-            elif isinstance(nat_value, Paragraph):
-                nat_cell_display = nat_value
-            else:
-                nat_cell_display = Paragraph(str(nat_value) if nat_value else "", style_pos)
-            
             table_rows.append([
-                start_knr_display,  # Start+KNr Mini-Tabelle
-                maybe_strike(row[1], style_horse),  # Reiter+Pferd
-                nat_cell_display,  # Nat
-                maybe_strike(row[3], style_pos), maybe_strike(row[4], style_pos),
-                maybe_strike(row[5], style_pos)  # 6 Spalten
+                maybe_strike(row[0], style_pos),
+                maybe_strike(row[1], style_pos),
+                maybe_strike(row[2], style_horse),
+                maybe_strike(row[3], style_pos),
+                maybe_strike(row[4], style_pos),
+                maybe_strike(row[5], style_pos)
             ])
 
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
@@ -790,13 +578,13 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
         ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),  # Start+KNr
-        ("ALIGN", (1,0), (1,-1), "LEFT"),    # Reiter+Pferd
-        ("ALIGN", (2,0), (-1,-1), "CENTER"), # Rest
+        ("ALIGN", (0,0), (0,-1), "CENTER"),
+        ("ALIGN", (1,0), (1,-1), "CENTER"),
+        ("ALIGN", (2,0), (2,-1), "LEFT"),
+        ("ALIGN", (3,0), (-1,-1), "CENTER"),
     ])
 
-    # Zebra-Streifen mit korrekter Pausen-Logik
-    starter_count = 0
+    starter_row_count = 0  # Zähler für Starter-Zeilen (für Zebra-Streifen)
     
     for ri in range(1, len(table_rows)):
         if ri < len(meta):
@@ -805,23 +593,25 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                 ts.add("SPAN", (0,ri), (-1,ri))
                 ts.add("BACKGROUND", (0,ri), (-1,ri), colors.Color(0.9, 0.9, 0.9))
                 ts.add("ALIGN", (0,ri), (-1,ri), "LEFT")
-                starter_count = 0
+                # Counter zurücksetzen für neue Abteilung
+                starter_row_count = 0
             elif m and m.get("type") == "pause":
                 ts.add("SPAN", (0,ri), (-1,ri))
+                # Prüfe ob vorheriger Starter grau war
+                prev_was_gray = (starter_row_count - 1) % 2 == 1
+                if not prev_was_gray:  # Vorherige war weiß → Pause grau
+                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
                 ts.add("ALIGN", (0,ri), (-1,ri), "CENTER")
-                prev_was_gray = (starter_count - 1) % 2 == 1
-                if not prev_was_gray:
-                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
-                starter_count -= 1
+                # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
+                starter_row_count -= 1
             elif m and m.get("type") == "starter":
-                is_gray_zebra = starter_count % 2 == 1
-                if is_gray_zebra:
-                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor("#f5f5f5"))
+                # Zebra: ungerade Starter sind grau (1, 3, 5, ...)
+                if starter_row_count % 2 == 1:
+                    ts.add("BACKGROUND", (0,ri), (-1,ri), colors.HexColor('#E8E8E8'))
                 
-                if m.get("withdrawn", False):
-                    ts.add("TEXTCOLOR", (0,ri), (-1,ri), colors.darkgrey)
+                # Withdrawn: Kein extra Hintergrund - nur durchgestrichen im Text
                 
-                starter_count += 1
+                starter_row_count += 1
 
     t.setStyle(ts)
     elements.append(t)
@@ -858,5 +648,4 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         ]))
         elements.append(jt)
 
-    # LISTEN: Kein FooterCanvas (keine Sponsorenleiste)
     doc.build(elements)

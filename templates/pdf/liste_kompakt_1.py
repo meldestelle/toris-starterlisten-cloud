@@ -1,5 +1,5 @@
-# templates/pdf/liste_standard_logo.py
-# Listen-Template: Nur Tabelle + Richter, ohne Kopfbereich
+# templates/stream/liste_kompakt_1.py
+# Listen-Version: Einseitig - Jede Seite hat Rand oben + unten (für einseitig bedrucktes Sponsorenpapier)
 # Basierend auf pdf_standard_logo.py aber ohne Kopf
 import os
 import json
@@ -27,17 +27,17 @@ def _fmt_header_datetime(iso):
         return str(iso)
 
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageTemplate, Frame, NextPageTemplate
+from reportlab.platypus import BaseDocTemplate, Table, TableStyle, Paragraph, Spacer, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
-OUTPUT_DIR = "Ausgabe"
+# OUTPUT_DIR nicht benötigt im Online-Tool
 
 def _ensure_output_dir():
     if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
+        pass  # Kein lokaler Ausgabe-Ordner im Online-Tool
 
 def _safe_get(obj, key, default=""):
     """Safely get value from dict or return default"""
@@ -141,50 +141,34 @@ def render(starterlist: dict, filename: str):
         # Fallback wenn Konvertierung fehlschlägt
         output_filename = "990.pdf"
     
-    # Verwende übergebenen filename statt filename
-    
+    # Verwende übergebenen filename statt lokalen Ausgabe-Pfad
     
     # Hole Abstände aus starterlist (in cm)
     spacing_top_cm = starterlist.get("spacingTopCm", 2.0)  # Nur für Seite 1 - gleich wie unten
     spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)  # Für alle Seiten
     
-    print(f"PDF LISTE DEBUG: Abstände - Seite 1 Oben: {spacing_top_cm}cm, Alle Seiten Unten: {spacing_bottom_cm}cm, Ab Seite 2 Oben: 1cm")
+    print(f"PDF LISTE DEBUG: Einseitig - Alle Seiten Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm")
     
     # Konvertiere cm zu mm für ReportLab
-    top_margin_first = spacing_top_cm * 10  # cm -> mm (nur Seite 1)
-    top_margin_later = 1.0 * 10  # 1cm für alle weiteren Seiten
-    bottom_margin = spacing_bottom_cm * 10  # cm -> mm (alle Seiten)
+    top_margin = spacing_top_cm * 10
+    bottom_margin = spacing_bottom_cm * 10
     
-    # Erstelle Custom DocTemplate mit unterschiedlichen Seitenvorlagen
-    class ListeDocTemplate(SimpleDocTemplate):
+    # Erstelle Custom DocTemplate mit gleichen Seitenvorlagen auf allen Seiten
+    class ListeDocTemplate(BaseDocTemplate):
         def __init__(self, filename, **kw):
             self.allowSplitting = 1
-            SimpleDocTemplate.__init__(self, filename, **kw)
+            BaseDocTemplate.__init__(self, filename, **kw)
             
-        def build(self, flowables):
-            # Erste Seite mit großem oberen Rand
-            frame_first = Frame(
+            frame_all = Frame(
                 8*mm, bottom_margin*mm,
-                A4[0] - 18*mm, A4[1] - top_margin_first*mm - bottom_margin*mm,
-                id='first',
+                A4[0] - 18*mm, A4[1] - top_margin*mm - bottom_margin*mm,
+                id='all',
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
-            # Folgeseiten mit kleinem oberen Rand (1cm)
-            frame_later = Frame(
-                8*mm, bottom_margin*mm,
-                A4[0] - 18*mm, A4[1] - top_margin_later*mm - bottom_margin*mm,
-                id='later',
-                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
-            )
-            
-            # Definiere die Seitenvorlagen
             self.addPageTemplates([
-                PageTemplate(id='First', frames=[frame_first]),
-                PageTemplate(id='Later', frames=[frame_later])
+                PageTemplate(id='AllPages', frames=[frame_all])
             ])
-            
-            SimpleDocTemplate.build(self, flowables)
     
     doc = ListeDocTemplate(
         filename,
@@ -210,8 +194,7 @@ def render(starterlist: dict, filename: str):
     
     elements = []
     
-    # Nach der ersten Seite wechseln wir zum "Later" Template
-    elements.append(NextPageTemplate('Later'))
+    # Einseitig: Alle Seiten gleich (Rand oben + unten)
 
     # Competition-Daten
     comp = starterlist.get("competition") or {}

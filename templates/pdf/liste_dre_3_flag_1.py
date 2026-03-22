@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_dre_3_logo.py
+# templates/stream/liste_dre_3_flag_1.py
+# Listen-Version: Einseitig - Jede Seite hat Rand oben + unten (für einseitig bedrucktes Sponsorenpapier)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Flowable, PageTemplate, Frame
+from reportlab.platypus import BaseDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Flowable, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
@@ -11,24 +12,24 @@ import os
 from io import BytesIO
 
 WEEKDAY_MAP = {
-    "Monday": "Monday", "Tuesday": "Tuesday", "Wednesday": "Wednesday",
-    "Thursday": "Thursday", "Friday": "Friday", "Saturday": "Saturday",
-    "Sunday": "Sunday"
+    "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
+    "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag",
+    "Sunday": "Sonntag"
 }
 
 MONTH_MAP = {
-    "January": "January", "February": "February", "March": "March", "April": "April",
-    "May": "May", "June": "June", "July": "July", "August": "August",
-    "September": "September", "October": "October", "November": "November", "December": "December"
+    "January": "Januar", "February": "Februar", "March": "März", "April": "April",
+    "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
+    "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
 }
 
 # Mapping für Geschlecht - VERBESSERT
 SEX_MAP = {
-    "MARE": "mare",
-    "GELDING": "gelding", 
-    "STALLION": "stallion",
-    "M": "gelding",
-    "F": "mare",
+    "MARE": "Stute",
+    "GELDING": "Wallach", 
+    "STALLION": "Hengst",
+    "M": "Wallach",
+    "F": "Stute",
     "": ""
 }
 
@@ -70,22 +71,22 @@ def _fmt_header_datetime(iso):
         dt = datetime.fromisoformat(iso.replace("Z", ""))
         weekday = WEEKDAY_MAP.get(dt.strftime("%A"), dt.strftime("%A"))
         month = MONTH_MAP.get(dt.strftime("%B"), dt.strftime("%B"))
-        return f"{weekday}, {month} {dt.day}, {dt.year} at {dt.strftime('%H:%M')}"
+        return f"{weekday}, {dt.day}. {month} {dt.year} um {dt.strftime('%H:%M')} Uhr"
     except Exception:
         return str(iso)
 
 def _format_pause_text(total_seconds, info):
     secs = int(total_seconds or 0)
     if secs == 0:
-        return info or "Break"
+        return info or "Pause"
     if secs >= 3600:
         h = secs // 3600
         m = (secs % 3600) // 60
-        base = f"{h} hr {m:02d} min Break"
+        base = f"{h} Std. {m:02d} Min. Pause"
     elif secs >= 60:
-        base = f"{secs//60} minutes Break"
+        base = f"{secs//60} Minuten Pause"
     else:
-        base = f"{secs} seconds Break"
+        base = f"{secs} Sekunden Pause"
     return f"{base} - {info}" if info else base
 
 def _process_information_text(text):
@@ -101,7 +102,7 @@ def _get_ordered_judge_positions_main_table(judges):
     pos_map = {
         0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
         7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
-        "WARM_UP_AREA": "Warm up", "WATER_JUMP": "Water"
+        "WARM_UP_AREA": "Aufsicht", "WATER_JUMP": "Wasser"
     }
     
     available_positions = set()
@@ -132,7 +133,7 @@ def _get_ordered_judges_all(judges):
     pos_map = {
         0: "E", 1: "H", 2: "C", 3: "M", 4: "B", 5: "K", 6: "V", 
         7: "S", 8: "R", 9: "P", 10: "F", 11: "A",
-        "WARM_UP_AREA": "Warm up", "WATER_JUMP": "Water"
+        "WARM_UP_AREA": "Aufsicht", "WATER_JUMP": "Wasser"
     }
     
     dressage_positions = ["E", "H", "C", "M", "B"]
@@ -184,113 +185,113 @@ def get_nationality_code(nationality_str):
     return ioc_to_iso.get(code, code[:3] if len(code) >= 3 else code)
 
 def get_country_name(ioc_code):
-    """Returns full country name in English - Complete list for all 250 countries"""
+    """Returns full country name in German - Complete list for all 250 countries"""
     if not ioc_code:
         return ""
     
     names = {
         # A
-        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albania", "ALG": "Algeria",
-        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua and Barbuda", "ARG": "Argentina",
-        "ARM": "Armenia", "ARU": "Aruba", "ASA": "American Samoa", "AUS": "Australia",
-        "AUT": "Austria", "AZE": "Azerbaijan",
+        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albanien", "ALG": "Algerien",
+        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua und Barbuda", "ARG": "Argentinien",
+        "ARM": "Armenien", "ARU": "Aruba", "ASA": "Amerikanisch-Samoa", "AUS": "Australien",
+        "AUT": "Österreich", "AZE": "Aserbaidschan",
         
         # B
-        "BAH": "Bahamas", "BAN": "Bangladesh", "BAR": "Barbados", "BDI": "Burundi",
-        "BEL": "Belgium", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
-        "BIH": "Bosnia and Herzegovina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivia",
-        "BOT": "Botswana", "BRA": "Brazil", "BRN": "Bahrain", "BRU": "Brunei",
-        "BUL": "Bulgaria", "BUR": "Burkina Faso",
+        "BAH": "Bahamas", "BAN": "Bangladesch", "BAR": "Barbados", "BDI": "Burundi",
+        "BEL": "Belgien", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
+        "BIH": "Bosnien und Herzegowina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivien",
+        "BOT": "Botswana", "BRA": "Brasilien", "BRN": "Bahrain", "BRU": "Brunei",
+        "BUL": "Bulgarien", "BUR": "Burkina Faso",
         
         # C
-        "CAF": "Central African Republic", "CAM": "Cambodia", "CAN": "Canada",
-        "CAY": "Cayman Islands", "CGO": "Congo", "CHA": "Chad", "CHI": "Chile",
-        "CHN": "China", "CIV": "Ivory Coast", "CMR": "Cameroon", "COD": "DR Kongo",
-        "COK": "Cook Islands", "COL": "Colombia", "COM": "Comoros", "CPV": "Cape Verde",
-        "CRC": "Costa Rica", "CRO": "Croatia", "CUB": "Cuba", "CYP": "Cyprus",
-        "CZE": "Czech Republic",
+        "CAF": "Zentralafrikanische Republik", "CAM": "Kambodscha", "CAN": "Kanada",
+        "CAY": "Kaimaninseln", "CGO": "Kongo", "CHA": "Tschad", "CHI": "Chile",
+        "CHN": "China", "CIV": "Elfenbeinküste", "CMR": "Kamerun", "COD": "DR Kongo",
+        "COK": "Cookinseln", "COL": "Kolumbien", "COM": "Komoren", "CPV": "Kap Verde",
+        "CRC": "Costa Rica", "CRO": "Kroatien", "CUB": "Kuba", "CYP": "Zypern",
+        "CZE": "Tschechien",
         
         # D-E
-        "DEN": "Denmark", "DJI": "Djibouti", "DMA": "Dominica", "DOM": "Dominican Republic",
-        "ECU": "Ecuador", "EGY": "Egypt", "ERI": "Eritrea", "ESA": "El Salvador",
-        "ESP": "Spain", "EST": "Estonia", "ETH": "Ethiopia",
+        "DEN": "Dänemark", "DJI": "Dschibuti", "DMA": "Dominica", "DOM": "Dominikanische Republik",
+        "ECU": "Ecuador", "EGY": "Ägypten", "ERI": "Eritrea", "ESA": "El Salvador",
+        "ESP": "Spanien", "EST": "Estland", "ETH": "Äthiopien",
         
         # F
-        "FAR": "Färöer", "FIJ": "Fiji", "FIN": "Finland", "FRA": "France",
+        "FAR": "Färöer", "FIJ": "Fidschi", "FIN": "Finnland", "FRA": "Frankreich",
         "FSM": "Mikronesien",
         
         # G
-        "GAB": "Gabon", "GAM": "Gambia", "GBR": "Great Britain", "GBS": "Guinea-Bissau",
-        "GEO": "Georgia", "GEQ": "Equatorial Guinea", "GER": "Germany", "GHA": "Ghana",
-        "GRE": "Greece", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
+        "GAB": "Gabun", "GAM": "Gambia", "GBR": "Großbritannien", "GBS": "Guinea-Bissau",
+        "GEO": "Georgien", "GEQ": "Äquatorialguinea", "GER": "Deutschland", "GHA": "Ghana",
+        "GRE": "Griechenland", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
         "GUM": "Guam", "GUY": "Guyana",
         
         # H-I
-        "HAI": "Haiti", "HKG": "Hong Kong", "HON": "Honduras", "HUN": "Hungary",
-        "INA": "Indonesia", "IND": "India", "IRI": "Iran", "IRL": "Ireland",
-        "IRQ": "Iraq", "ISL": "Iceland", "ISR": "Israel", "ISV": "Amerikanische Jungferninseln",
-        "ITA": "Italy", "IVB": "Britische Jungferninseln",
+        "HAI": "Haiti", "HKG": "Hongkong", "HON": "Honduras", "HUN": "Ungarn",
+        "INA": "Indonesien", "IND": "Indien", "IRI": "Iran", "IRL": "Irland",
+        "IRQ": "Irak", "ISL": "Island", "ISR": "Israel", "ISV": "Amerikanische Jungferninseln",
+        "ITA": "Italien", "IVB": "Britische Jungferninseln",
         
         # J-K
-        "JAM": "Jamaica", "JOR": "Jordan", "JPN": "Japan", "KAZ": "Kazakhstan",
-        "KEN": "Kenya", "KGZ": "Kyrgyzstan", "KIR": "Kiribati", "KOR": "South Korea",
-        "KOS": "Kosovo", "KSA": "Saudi Arabia", "KUW": "Kuwait",
+        "JAM": "Jamaika", "JOR": "Jordanien", "JPN": "Japan", "KAZ": "Kasachstan",
+        "KEN": "Kenia", "KGZ": "Kirgisistan", "KIR": "Kiribati", "KOR": "Südkorea",
+        "KOS": "Kosovo", "KSA": "Saudi-Arabien", "KUW": "Kuwait",
         
         # L
-        "LAO": "Laos", "LAT": "Latvia", "LBA": "Libya", "LBN": "Lebanon",
-        "LBR": "Liberia", "LCA": "Saint Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
-        "LTU": "Lithuania", "LUX": "Luxembourg",
+        "LAO": "Laos", "LAT": "Lettland", "LBA": "Libyen", "LBN": "Libanon",
+        "LBR": "Liberia", "LCA": "St. Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
+        "LTU": "Litauen", "LUX": "Luxemburg",
         
         # M
-        "MAC": "Macau", "MAD": "Madagascar", "MAR": "Morocco", "MAS": "Malaysia",
-        "MAW": "Malawi", "MDA": "Moldau", "MDV": "Maldives", "MEX": "Mexico",
-        "MGL": "Mongolia", "MHL": "Marshallinseln", "MKD": "Nordmazedonien", "MLI": "Mali",
-        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mozambique",
+        "MAC": "Macau", "MAD": "Madagaskar", "MAR": "Marokko", "MAS": "Malaysia",
+        "MAW": "Malawi", "MDA": "Moldau", "MDV": "Malediven", "MEX": "Mexiko",
+        "MGL": "Mongolei", "MHL": "Marshallinseln", "MKD": "Nordmazedonien", "MLI": "Mali",
+        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mosambik",
         "MRI": "Mauritius", "MTN": "Mauretanien", "MYA": "Myanmar",
         
         # N
-        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Netherlands", "NEP": "Nepal",
-        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norway", "NRU": "Nauru",
-        "NZL": "New Zealand",
+        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Niederlande", "NEP": "Nepal",
+        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norwegen", "NRU": "Nauru",
+        "NZL": "Neuseeland",
         
         # O-P
         "OMA": "Oman", "PAK": "Pakistan", "PAN": "Panama", "PAR": "Paraguay",
-        "PER": "Peru", "PHI": "Philippines", "PLE": "Palestine", "PLW": "Palau",
-        "PNG": "Papua New Guinea", "POL": "Poland", "POR": "Portugal", "PRK": "North Korea",
+        "PER": "Peru", "PHI": "Philippinen", "PLE": "Palästina", "PLW": "Palau",
+        "PNG": "Papua-Neuguinea", "POL": "Polen", "POR": "Portugal", "PRK": "Nordkorea",
         "PUR": "Puerto Rico",
         
         # Q-R
-        "QAT": "Qatar", "ROU": "Romania", "RSA": "South Africa", "RUS": "Russia",
-        "RWA": "Rwanda",
+        "QAT": "Katar", "ROU": "Rumänien", "RSA": "Südafrika", "RUS": "Russland",
+        "RWA": "Ruanda",
         
         # S
-        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychelles", "SGP": "Singapore",
-        "SKN": "Saint Kitts and Nevis", "SLE": "Sierra Leone", "SLO": "Slovenia",
-        "SMR": "San Marino", "SOL": "Salomonen", "SOM": "Somalia", "SRB": "Serbia",
-        "SRI": "Sri Lanka", "SSD": "Südsudan", "STP": "Sao Tome and Principe",
-        "SUD": "Sudan", "SUI": "Switzerland", "SUR": "Suriname", "SVK": "Slovakia",
-        "SWE": "Sweden", "SWZ": "Eswatini", "SYR": "Syria",
+        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychellen", "SGP": "Singapur",
+        "SKN": "St. Kitts und Nevis", "SLE": "Sierra Leone", "SLO": "Slowenien",
+        "SMR": "San Marino", "SOL": "Salomonen", "SOM": "Somalia", "SRB": "Serbien",
+        "SRI": "Sri Lanka", "SSD": "Südsudan", "STP": "São Tomé und Príncipe",
+        "SUD": "Sudan", "SUI": "Schweiz", "SUR": "Suriname", "SVK": "Slowakei",
+        "SWE": "Schweden", "SWZ": "Eswatini", "SYR": "Syrien",
         
         # T
-        "TAN": "Tanzania", "TCA": "Turks and Caicos Islands", "TGA": "Tonga",
-        "THA": "Thailand", "TJK": "Tajikistan", "TKM": "Turkmenistan",
-        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad and Tobago",
-        "TUN": "Tunisia", "TUR": "Turkey", "TUV": "Tuvalu",
+        "TAN": "Tansania", "TCA": "Turks- und Caicosinseln", "TGA": "Tonga",
+        "THA": "Thailand", "TJK": "Tadschikistan", "TKM": "Turkmenistan",
+        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad und Tobago",
+        "TUN": "Tunesien", "TUR": "Türkei", "TUV": "Tuvalu",
         
         # U-V
-        "UAE": "United Arab Emirates", "UGA": "Uganda", "UKR": "Ukraine",
-        "URU": "Uruguay", "USA": "USA", "UZB": "Uzbekistan", "VAN": "Vanuatu",
-        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "Saint Vincent and the Grenadines",
+        "UAE": "Vereinigte Arabische Emirate", "UGA": "Uganda", "UKR": "Ukraine",
+        "URU": "Uruguay", "USA": "USA", "UZB": "Usbekistan", "VAN": "Vanuatu",
+        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "St. Vincent und die Grenadinen",
         
         # Y-Z
-        "YEM": "Yemen", "ZAM": "Zambia", "ZIM": "Zimbabwe",
+        "YEM": "Jemen", "ZAM": "Sambia", "ZIM": "Simbabwe",
         
         # Backwards compatibility
-        "GB": "Great Britain", "DE": "Germany", "NL": "Netherlands", "CH": "Switzerland",
-        "DK": "Denmark", "AT": "Austria", "BE": "Belgium", "FR": "France",
-        "IT": "Italy", "ES": "Spain", "SE": "Sweden", "NO": "Norway",
-        "PL": "Poland", "CZ": "Czech Republic", "HU": "Hungary", "RO": "Romania",
-        "IE": "Ireland", "PT": "Portugal",
+        "GB": "Großbritannien", "DE": "Deutschland", "NL": "Niederlande", "CH": "Schweiz",
+        "DK": "Dänemark", "AT": "Österreich", "BE": "Belgien", "FR": "Frankreich",
+        "IT": "Italien", "ES": "Spanien", "SE": "Schweden", "NO": "Norwegen",
+        "PL": "Polen", "CZ": "Tschechien", "HU": "Ungarn", "RO": "Rumänien",
+        "IE": "Irland", "PT": "Portugal",
     }
     
     return names.get(ioc_code.upper(), ioc_code)
@@ -425,7 +426,7 @@ class FooterCanvas(canvas.Canvas):
                 pass
 
 def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
-    # Extrahiere Prüfungsnummer und Division für XXY Format
+    # Extrahiere Prüfungsnummer und Abteilung für XXY Format
     comp = starterlist.get("competition") or {}
     comp_number_raw = comp.get("number") or starterlist.get("competitionNumber") or "99"
     
@@ -434,22 +435,50 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     match = re.search(r'(\d+)', str(comp_number_raw))
     comp_number = match.group(1) if match else "99"
     
-    # Hole Divisionsnummer (falls vorhanden)
+    # Hole Abteilungsnummer (falls vorhanden)
     division = starterlist.get("division") or starterlist.get("divisionNumber") or comp.get("division") or 0
     
-    # Formatiere als XXY: XX = Competition (2-stellig), Y = Division (1-stellig)
-    # Verwende den übergebenen filename Parameter (bereits vollständiger Pfad!)
-
-    # KEIN hardcodierter "Ausgabe" Ordner mehr!
-
-    # Berechne dynamischen bottomMargin basierend auf Sponsorenleiste
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    bottom_margin = spacing_bottom_cm * 10 * mm  # cm in mm
+    # Formatiere als XXY: XX = Prüfung (2-stellig), Y = Abteilung (1-stellig)
+    try:
+        comp_num = int(comp_number)
+        div_num = int(division) if division else 0
+        output_filename = f"{comp_num:02d}{div_num:01d}.pdf"
+    except (ValueError, TypeError):
+        output_filename = "990.pdf"
     
-    doc = SimpleDocTemplate(
+    # Verwende übergebenen filename statt lokalen Ausgabe-Pfad
+    
+    # Verwende übergebenen filename
+    
+    # Berechne dynamische Ränder basierend auf Sponsorenleiste
+    spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
+    
+    print(f"PDF LISTE DEBUG: Einseitig - Alle Seiten Oben: {spacing_top_cm}cm, Unten: {spacing_bottom_cm}cm")
+    
+    top_margin = spacing_top_cm * 10
+    bottom_margin = spacing_bottom_cm * 10
+    
+    class ListeDocTemplate(BaseDocTemplate):
+        def __init__(self, filename, **kw):
+            self.allowSplitting = 1
+            BaseDocTemplate.__init__(self, filename, **kw)
+            
+            frame_all = Frame(
+                8*mm, bottom_margin*mm,
+                A4[0] - 16*mm, A4[1] - top_margin*mm - bottom_margin*mm,
+                id='all',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            self.addPageTemplates([
+                PageTemplate(id='AllPages', frames=[frame_all])
+            ])
+    
+    doc = ListeDocTemplate(
         filename, pagesize=A4,
-        leftMargin=8*mm, rightMargin=8*mm,
-        topMargin=8*mm, bottomMargin=bottom_margin  # Dynamisch berechnet
+        rightMargin=0, leftMargin=0,
+        topMargin=0, bottomMargin=0
     )
 
     styles = getSampleStyleSheet()
@@ -467,16 +496,14 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     elements = []
 
     # LOGO DIREKT AM ANFANG - Prüfungsspezifisches Logo-System mit DPI-Korrektur
+    # --- LISTE: Nur Abstände, kein Header ---
     show = starterlist.get("show") or {}
     comp = starterlist.get("competition") or {}
     
-    spacing_top_cm = starterlist.get("spacingTopCm", 0.0)
-    spacing_bottom_cm = starterlist.get("spacingBottomCm", 0.0)
-    
-    if spacing_top_cm > 0:
-        elements.append(Spacer(1, spacing_top_cm * 10 * mm))
+    # Einseitig: Ränder werden durch Frame gesteuert
 
-    # --- KOPFZEILE: STARTING ORDER (links) und Datum/Ort (rechts) ---
+
+    # --- KOPFZEILE: STARTERLISTE (links) und Datum/Ort (rechts) ---
     starters = starterlist.get("starters") or []
     
     # Zeit-Logik wie im PDF-Template
@@ -506,7 +533,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     
     location = comp.get("location") or starterlist.get("location") or ""
     
-    header_left = "<b>STARTING ORDER</b>"
+    header_left = "<b>STARTERLISTE</b>"
     header_right = ""
     if start_raw:
         formatted_time = _fmt_header_datetime(start_raw)
@@ -532,7 +559,6 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         elements.append(Spacer(1, 3*mm))
 
 
-
     # --- TABELLE MIT 3 RICHTER-SPALTEN (7 Spalten total) MIT GRUPPIERUNGSLOGIK ---
     starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
@@ -554,7 +580,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     data_texts = []
     meta = []
-    data_texts.append(["<b># / CNO</b>", "<b>Athlete / Horse</b><br/><font size=7>Age / Colour / Sex / Sire x Sire Dam / Owner / Breeder</font>", "<b><font size=6>Nat</font></b>", f"<b>{judge_positions[0]}</b>", f"<b>{judge_positions[1]}</b>", f"<b>{judge_positions[2]}</b>", "<b>Total</b>"])
+    data_texts.append(["<b># / KNr</b>", "<b>Reiter / Pferd</b><br/><font size=7>Alter / Farbe / Geschlecht / Vater x Muttervater / Besitzer / Züchter</font>", "<b><font size=6>Nat</font></b>", f"<b>{judge_positions[0]}</b>", f"<b>{judge_positions[1]}</b>", f"<b>{judge_positions[2]}</b>", "<b>Total</b>"])
     meta.append({"type":"header"})
     
     # WICHTIG: Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
@@ -575,7 +601,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         # Nur wenn groupNumber existiert und > 0
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             # Neue Gruppe erkannt - Gruppen-Header hinzufügen
-            group_text = f"Division {starter_group}"
+            group_text = f"Abteilung {starter_group}"
             data_texts.append([group_text, "", "", "", "", "", ""])  # 7 Spalten
             meta.append({"type":"group"})
             
@@ -715,7 +741,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                     from datetime import datetime
                     current_year = datetime.now().year
                     age = current_year - int(breeding_season)
-                    details_parts.append(f"{age}y.")
+                    details_parts.append(f"{age}jähr.")
                 except:
                     pass
             
@@ -748,9 +774,9 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             
             owner_breeder_parts = []
             if owner:
-                owner_breeder_parts.append(f"O: {owner}")
+                owner_breeder_parts.append(f"B: {owner}")
             if breeder:
-                owner_breeder_parts.append(f"B: {breeder}")
+                owner_breeder_parts.append(f"Z: {breeder}")
             
             if owner_breeder_parts:
                 owner_breeder_text = " / ".join(owner_breeder_parts)
@@ -815,7 +841,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
     # --- Tabelle erstellen (7 Spalten) ---
     # Spaltenbreiten - MIT NAT-SPALTE, Start+KNr kombiniert
-    page_width = A4[0] - doc.leftMargin - doc.rightMargin
+    page_width = A4[0] - 16*mm  # 8mm links + 8mm rechts (Frame-Ränder)
     col1 = 22*mm  # Start+KNr kombiniert
     col_nat = 8*mm  # Nat (Flagge+Kürzel)
     col_judge = 12*mm
