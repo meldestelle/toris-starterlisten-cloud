@@ -105,7 +105,7 @@ def _get_competition_logo_path(starterlist: dict) -> str:
             print("PDF DEBUG: Kein Logo gefunden, ohne Logo fortfahren")
             return None
 
-def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, output_dir: str = None):
+def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, output_dir: str = None, print_options: dict = None):
     """
     Lädt das angegebene Template-Modul aus templates/pdf und ruft dessen render(starterlist, filename) auf.
     Alle Dateien werden im output_dir (oder 'Ausgabe'-Ordner) erstellt.
@@ -138,6 +138,22 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
         enhanced_starterlist["spacingTopCm"] = spacing_top_cm
         enhanced_starterlist["spacingBottomCm"] = spacing_bottom_cm
         print(f"PDF DEBUG: Liste-Template erkannt - Abstände: Oben={spacing_top_cm}cm, Unten={spacing_bottom_cm}cm")
+
+    # Druckoptionen hinzufügen (immer, damit Templates darauf zugreifen können)
+    if print_options:
+        enhanced_starterlist["printOptions"] = print_options
+        print(f"PDF DEBUG: print_options hinzugefügt: {print_options}")
+    else:
+        # Sichere Defaults damit Templates keinen KeyError bekommen
+        enhanced_starterlist["printOptions"] = {
+            "sponsor_top":      False,
+            "sponsor_bottom":   False,
+            "single_sided":     False,
+            "show_banner":      True,
+            "show_sponsor_bar": True,
+            "show_title":       True,
+            "show_header":      True,
+        }
     
     try:
         template_file = _find_template_file(template_name)

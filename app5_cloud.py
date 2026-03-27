@@ -114,6 +114,20 @@ if "logo_max_width_cm" not in st.session_state:
     st.session_state.logo_max_width_cm = 5.0
 if "include_closed" not in st.session_state:
     st.session_state.include_closed = False
+if "sponsor_top" not in st.session_state:
+    st.session_state.sponsor_top = False
+if "sponsor_bottom" not in st.session_state:
+    st.session_state.sponsor_bottom = False
+if "single_sided" not in st.session_state:
+    st.session_state.single_sided = False
+if "show_banner" not in st.session_state:
+    st.session_state.show_banner = True
+if "show_sponsor_bar" not in st.session_state:
+    st.session_state.show_sponsor_bar = True
+if "show_title" not in st.session_state:
+    st.session_state.show_title = True
+if "show_header" not in st.session_state:
+    st.session_state.show_header = True
 
 from pdf_export import create_pdf
 from word_export import create_word
@@ -588,33 +602,77 @@ with st.sidebar:
         st.warning("⚠️ Keine Word-Templates vorhanden!")
         st.info("💡 Tipp: Templates in Tab 3 'Verwaltung' hochladen")
     
-    # Abstände nur bei liste_ Templates
-    if st.session_state.pdf_template.startswith("liste_"):
-        st.subheader("📏 Abstände")
-        st.session_state.spacing_top_cm = st.number_input(
-            "Oben (cm)",
-            min_value=0.0,
-            max_value=10.0,
-            value=st.session_state.spacing_top_cm,
-            step=0.5
-        )
-        
-        st.session_state.spacing_bottom_cm = st.number_input(
-            "Unten (cm)",
-            min_value=0.0,
-            max_value=10.0,
-            value=st.session_state.spacing_bottom_cm,
-            step=0.5
-        )
-    
+    # Logo-Breite
     st.subheader("🖼️ Logo")
     st.session_state.logo_max_width_cm = st.number_input(
         "Breite (cm)",
         min_value=1.0,
         max_value=10.0,
         value=st.session_state.logo_max_width_cm,
-        step=0.5
+        step=0.5,
+        format="%.1f",
+        help="Maximale Breite des Logos (Standard: 5cm)"
     )
+
+    # Druckoptionen
+    st.markdown("---")
+    st.subheader("🖨️ Druckoptionen")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.show_header = st.checkbox(
+            "Prüfungskopf", value=st.session_state.show_header, key="show_header_cb"
+        )
+        st.session_state.show_banner = st.checkbox(
+            "Banner", value=st.session_state.show_banner, key="show_banner_cb"
+        )
+        st.session_state.show_sponsor_bar = st.checkbox(
+            "Sponsorenleiste", value=st.session_state.show_sponsor_bar, key="show_sponsor_bar_cb"
+        )
+        st.session_state.show_title = st.checkbox(
+            "Show-Titel", value=st.session_state.show_title, key="show_title_cb"
+        )
+    with col2:
+        st.session_state.sponsor_top = st.checkbox(
+            "Sponsorenpapier OBEN", value=st.session_state.sponsor_top, key="sponsor_top_cb"
+        )
+        st.session_state.sponsor_bottom = st.checkbox(
+            "Sponsorenpapier UNTEN", value=st.session_state.sponsor_bottom, key="sponsor_bottom_cb"
+        )
+        st.session_state.single_sided = st.checkbox(
+            "Einseitiger Druck", value=st.session_state.single_sided, key="single_sided_cb"
+        )
+
+    # Abstände — sichtbar wenn Sponsorenpapier aktiv oder Prüfungskopf ausgeblendet
+    needs_spacing = (
+        st.session_state.sponsor_top
+        or st.session_state.sponsor_bottom
+        or not st.session_state.show_header
+    )
+    if needs_spacing:
+        st.subheader("📏 Abstände")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.spacing_top_cm = st.number_input(
+                "Oben (cm)",
+                min_value=0.0,
+                max_value=10.0,
+                value=st.session_state.spacing_top_cm,
+                step=0.5,
+                key="spacing_top_input"
+            )
+        with col2:
+            st.session_state.spacing_bottom_cm = st.number_input(
+                "Unten (cm)",
+                min_value=0.0,
+                max_value=10.0,
+                value=st.session_state.spacing_bottom_cm,
+                step=0.5,
+                key="spacing_bottom_input"
+            )
+    else:
+        # Standardwerte wenn keine Abstände nötig
+        st.session_state.spacing_top_cm = 0.0
+        st.session_state.spacing_bottom_cm = 0.0
 
 # ============================================================================
 # TAB LAYOUT
@@ -868,6 +926,16 @@ with tab2:
                                     timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M")
                                     pdf_filename = f"{comp_formatted}{div_formatted}_start_{timestamp}.pdf"
                                     
+                                    print_options = {
+                                        "sponsor_top":      st.session_state.get("sponsor_top", False),
+                                        "sponsor_bottom":   st.session_state.get("sponsor_bottom", False),
+                                        "single_sided":     st.session_state.get("single_sided", False),
+                                        "show_banner":      st.session_state.get("show_banner", True),
+                                        "show_sponsor_bar": st.session_state.get("show_sponsor_bar", True),
+                                        "show_title":       st.session_state.get("show_title", True),
+                                        "show_header":      st.session_state.get("show_header", True),
+                                    }
+
                                     pdf_path = create_pdf(
                                         starterlist,
                                         pdf_filename,
@@ -875,7 +943,8 @@ with tab2:
                                         st.session_state.spacing_top_cm,
                                         st.session_state.spacing_bottom_cm,
                                         st.session_state.logo_max_width_cm,
-                                        output_dir=str(OUTPUT_DIR)
+                                        output_dir=str(OUTPUT_DIR),
+                                        print_options=print_options
                                     )
                                     
                                     if not pdf_path or not os.path.exists(pdf_path):
