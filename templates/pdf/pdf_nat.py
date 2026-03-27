@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_nat.py - Deutsches Design mit Flaggen
+# templates/pdf/pdf_nat.py - Deutsches Design mit Flaggen - mit printOptions-Unterstützung
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
@@ -266,62 +266,157 @@ def get_sponsor_bar_height():
     except: return 25*mm
 
 class BannerCanvas(canvas.Canvas):
+    """Canvas mit optionalem Banner und Sponsorenleiste, gesteuert über print_options"""
+    _print_options = {}
+    
     def __init__(self, *args, **kwargs):
         canvas.Canvas.__init__(self, *args, **kwargs)
+        self.sponsor_height = get_sponsor_bar_height() if self._print_options.get("show_sponsor_bar", True) else 0
         self.page_num = 0
-        self.banner_path = os.path.join("logos", "banner.png")
+        self.banner_path = None
         self.banner_height = 0
-        if os.path.exists(self.banner_path):
+        if self._print_options.get("show_banner", True):
+            bp = os.path.join("logos", "banner.png")
+            if os.path.exists(bp):
+                try:
+                    pil_img = PILImage.open(bp)
+                    img_width, img_height = pil_img.size
+                    dpi = pil_img.info.get('dpi', (72, 72))
+                    dpi_x = dpi[0] if isinstance(dpi, tuple) else dpi
+                    if dpi_x > 150:
+                        display_width = img_width * 72.0 / dpi_x
+                        display_height = img_height * 72.0 / dpi_x
+                    else:
+                        display_width = img_width
+                        display_height = img_height
+                    self.banner_width = A4[0]
+                    self.banner_height = A4[0] * (display_height / display_width)
+                    self.banner_path = bp
+                except:
+                    pass
+        
+    def showPage(self):
+        self.draw_banner()
+        self.draw_footer()
+        self.page_num += 1
+        canvas.Canvas.showPage(self)
+    
+    def draw_banner(self):
+        if self.page_num != 0:
+            return
+        if self.banner_path and os.path.exists(self.banner_path):
             try:
-                pil_img = PILImage.open(self.banner_path)
+                self.drawImage(self.banner_path, 0, A4[1] - self.banner_height, width=self.banner_width, height=self.banner_height, preserveAspectRatio=True, mask='auto')
+            except:
+                pass
+    
+    def draw_footer(self):
+        if not self._print_options.get("show_sponsor_bar", True):
+            return
+        sponsor_path = "logos/sponsorenleiste.png"
+        if os.path.exists(sponsor_path):
+            try:
+                self.drawImage(sponsor_path, (A4[0] - 190*mm) / 2, 4*mm, width=190*mm, height=self.sponsor_height, preserveAspectRatio=True, mask='auto')
+            except:
+                pass
+
+def render(starterlist, filename, logo_max_width_cm=5.0):
+    # Druckoptionen auslesen
+    print_options = starterlist.get("printOptions", {})
+    sponsor_top = print_options.get("sponsor_top", False)
+    sponsor_bottom = print_options.get("sponsor_bottom", False)
+    single_sided = print_options.get("single_sided", False)
+    show_banner = print_options.get("show_banner", True)
+    show_sponsor_bar = print_options.get("show_sponsor_bar", True)
+    show_title = print_options.get("show_title", True)
+    show_header = print_options.get("show_header", True)
+    
+    BannerCanvas._print_options = print_options
+    
+    has_sponsor_paper = sponsor_top or sponsor_bottom
+    needs_custom_margins = has_sponsor_paper or not show_header
+    
+    if needs_custom_margins:
+        spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
+        spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
+        
+        if show_sponsor_bar:
+            sponsor_height = get_sponsor_bar_height()
+            min_bottom_mm = (4*mm + sponsor_height + 1*mm) / mm
+        else:
+            min_bottom_mm = 10
+        
+        top_margin_front = (spacing_top_cm * 10) if sponsor_top or not show_header else 0.5 * 10
+        top_margin_back = 0.5 * 10
+        
+        if sponsor_bottom or not show_header:
+            bottom_margin_front = max(spacing_bottom_cm * 10, min_bottom_mm)
+        else:
+            bottom_margin_front = min_bottom_mm
+        # Sponsorenleiste erscheint auf ALLEN Seiten (FooterCanvas) -> gleicher Mindestabstand ueberall
+        bottom_margin_back = min_bottom_mm
+
+        if single_sided:
+            from reportlab.platypus import BaseDocTemplate
+            class CustomDocTemplate(BaseDocTemplate):
+                def __init__(self, filename, **kw):
+                    self.allowSplitting = 1
+                    BaseDocTemplate.__init__(self, filename, **kw)
+                    frame_all = Frame(10*mm, bottom_margin_front*mm, A4[0] - 20*mm, A4[1] - top_margin_front*mm - bottom_margin_front*mm, id='all', leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+                    self.addPageTemplates([PageTemplate(id='AllPages', frames=[frame_all])])
+            doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
+        else:
+            from reportlab.platypus import BaseDocTemplate
+            class CustomDocTemplate(BaseDocTemplate):
+                def __init__(self, filename, **kw):
+                    self.allowSplitting = 1
+                    BaseDocTemplate.__init__(self, filename, **kw)
+                    frame_front = Frame(10*mm, bottom_margin_front*mm, A4[0] - 20*mm, A4[1] - top_margin_front*mm - bottom_margin_front*mm, id='front', leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+                    frame_back  = Frame(10*mm, bottom_margin_back*mm,  A4[0] - 20*mm, A4[1] - top_margin_back*mm  - bottom_margin_back*mm,  id='back',  leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+                    self.addPageTemplates([
+                        PageTemplate(id='Front', frames=[frame_front]),
+                        PageTemplate(id='Back',  frames=[frame_back])
+                    ])
+                def handle_pageBegin(self):
+                    # self.page ist 0-basiert: 0,2,4... = Vorderseiten; 1,3,5... = Rueckseiten
+                    if self.page % 2 == 0:
+                        self.pageTemplate = self.pageTemplates[0]  # Front
+                    else:
+                        self.pageTemplate = self.pageTemplates[1]  # Back
+                    BaseDocTemplate.handle_pageBegin(self)
+            doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
+        
+        page_width = A4[0] - 20*mm
+    else:
+        sponsor_height = get_sponsor_bar_height() if show_sponsor_bar else 0
+        footer_space = 4*mm
+        margin_above_sponsor = 1*mm
+        bottom_margin = footer_space + sponsor_height + margin_above_sponsor if show_sponsor_bar else 8*mm
+        doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=10*mm, leftMargin=10*mm, topMargin=5*mm, bottomMargin=bottom_margin)
+        page_width = A4[0] - doc.leftMargin - doc.rightMargin
+    
+    elements = []
+    
+    has_banner = False
+    if show_banner:
+        banner_path = os.path.join("logos", "banner.png")
+        if os.path.exists(banner_path):
+            try:
+                pil_img = PILImage.open(banner_path)
                 img_width, img_height = pil_img.size
                 dpi = pil_img.info.get('dpi', (72, 72))
                 dpi_x = dpi[0] if isinstance(dpi, tuple) else dpi
                 if dpi_x > 150:
-                    scale_factor = 72.0 / dpi_x
-                    display_width = img_width * scale_factor
-                    display_height = img_height * scale_factor
+                    display_width = img_width * 72.0 / dpi_x
+                    display_height = img_height * 72.0 / dpi_x
                 else:
                     display_width = img_width
                     display_height = img_height
-                page_width = A4[0]
-                aspect_ratio = display_height / display_width
-                self.banner_width = page_width
-                self.banner_height = page_width * aspect_ratio
-            except: self.banner_path = None
-        else: self.banner_path = None
-        self.sponsor_height = get_sponsor_bar_height()
-    def showPage(self):
-        self.draw_banner(); self.draw_footer(); self.page_num += 1; canvas.Canvas.showPage(self)
-    def draw_banner(self):
-        if self.page_num != 0: return
-        if self.banner_path and os.path.exists(self.banner_path):
-            try: self.drawImage(self.banner_path, 0, A4[1] - self.banner_height, width=self.banner_width, height=self.banner_height, preserveAspectRatio=True, mask='auto')
-            except: pass
-    def draw_footer(self):
-        sponsor_path = "logos/sponsorenleiste.png"
-        if os.path.exists(sponsor_path):
-            try: self.drawImage(sponsor_path, (A4[0] - 190*mm) / 2, 4*mm, width=190*mm, height=self.sponsor_height, preserveAspectRatio=True, mask='auto')
-            except: pass
-def render(starterlist, filename, logo_max_width_cm=5.0):
-    sponsor_height = get_sponsor_bar_height(); bottom_margin = 4*mm + sponsor_height + 1*mm
-    doc = SimpleDocTemplate(
-        filename, pagesize=A4, 
-        rightMargin=10*mm, leftMargin=10*mm,  # Kleiner für mehr Platz!
-        topMargin=5*mm, bottomMargin=bottom_margin
-    )
-    
-    elements = []
-    banner_path = os.path.join("logos", "banner.png"); has_banner = False
-    if os.path.exists(banner_path):
-        try:
-            pil_img = PILImage.open(banner_path); img_width, img_height = pil_img.size
-            dpi = pil_img.info.get('dpi', (72, 72)); dpi_x = dpi[0] if isinstance(dpi, tuple) else dpi
-            if dpi_x > 150: display_width = img_width * 72.0 / dpi_x; display_height = img_height * 72.0 / dpi_x
-            else: display_width = img_width; display_height = img_height
-            banner_height = A4[0] * (display_height / display_width)
-            elements.append(Spacer(1, banner_height - 3*mm)); has_banner = True
-        except: pass
+                banner_height = A4[0] * (display_height / display_width)
+                elements.append(Spacer(1, banner_height - 6*mm))
+                has_banner = True
+            except:
+                pass
     styles = getSampleStyleSheet()
     
     # Styles
@@ -339,54 +434,47 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     style_group = ParagraphStyle('Group', fontSize=10, leading=12, fontName='Helvetica-Bold', alignment=TA_LEFT, textColor=colors.white)
     
     # Logo und Header nebeneinander
-    logo_path = starterlist.get("logoPath")
+    logo_path = starterlist.get("logoPath") if show_header else None
     
-    # Header-Text sammeln
     header_parts = []
-    if not has_banner:
-        show_title = starterlist.get("showTitle", "")
-        if show_title:
-            header_parts.append(Paragraph(f"<b>{show_title}</b>", style_title))
-    
-    # Competition-Objekt holen (wie in pdf_abstammung_logo)
     comp = starterlist.get("competition") or {}
     
-    # Prüfungsnummer und Name
-    comp_no = comp.get("number") or starterlist.get("competitionNumber") or ""
-    comp_title = comp.get("title") or starterlist.get("competitionName") or starterlist.get("competitionTitle") or ""
-    division = comp.get("divisionNumber") or starterlist.get("divisionNumber")
+    if show_header:
+        if show_title:
+            show_title_text = starterlist.get("showTitle", "")
+            if show_title_text:
+                header_parts.append(Paragraph(f"<b>{show_title_text}</b>", style_title))
+        
+        comp_no = comp.get("number") or starterlist.get("competitionNumber") or ""
+        comp_title_text = comp.get("title") or starterlist.get("competitionName") or starterlist.get("competitionTitle") or ""
+        division = comp.get("divisionNumber") or starterlist.get("divisionNumber")
+        
+        div_text = ""
+        try:
+            if division is not None and str(division) != "" and int(division) > 0:
+                div_text = f"{int(division)}. Abt. "
+        except:
+            div_text = f"{division} " if division else ""
+        
+        if comp_no or comp_title_text:
+            comp_line = f"Prüfung {comp_no}"
+            if div_text:
+                comp_line += f" - {div_text}{comp_title_text}"
+            elif comp_title_text:
+                comp_line += f" — {comp_title_text}"
+            header_parts.append(Paragraph(f"<b>{comp_line}</b>", style_comp))
+        
+        comp_info = starterlist.get("informationText", "")
+        if comp_info:
+            comp_info_html = comp_info.replace("\n", "<br/>")
+            header_parts.append(Paragraph(comp_info_html, style_info))
+        
+        subtitle = starterlist.get("subtitle", "")
+        if subtitle:
+            header_parts.append(Paragraph(subtitle, style_sub))
     
-    # Division-Text erstellen
-    div_text = ""
-    try:
-        if division is not None and str(division) != "" and int(division) > 0:
-            div_text = f"{int(division)}. Abt. "
-    except:
-        div_text = f"{division} " if division else ""
-    
-    # 2. Zeile: Prüfungszeile FETT
-    if comp_no or comp_title:
-        # Mit Division: "Prüfung 17 - 1. Abt. Dressurpferdeprüfung Kl. L"
-        # Ohne Division: "Prüfung 17 — Dressurpferdeprüfung Kl. L"
-        comp_line = f"Prüfung {comp_no}"
-        if div_text:
-            comp_line += f" - {div_text}{comp_title}"
-        elif comp_title:
-            comp_line += f" — {comp_title}"
-        header_parts.append(Paragraph(f"<b>{comp_line}</b>", style_comp))  # JETZT FETT!
-    
-    # 3. Zeile: informationText (nicht mehr fett)
-    comp_info = starterlist.get("informationText", "")
-    if comp_info:
-        # Zeilenumbrüche in <br/> umwandeln für HTML-Darstellung
-        comp_info_html = comp_info.replace("\n", "<br/>")
-        header_parts.append(Paragraph(comp_info_html, style_info))  # style_info - nicht mehr BOLD!
-    
-    subtitle = starterlist.get("subtitle", "")
-    if subtitle:
-        header_parts.append(Paragraph(subtitle, style_sub))
-    
-    # Division-Start-Zeit (wie in pdf_abstammung_logo)
+    # Datum/Zeit/Ort
+    location = starterlist.get("competitionLocation", "") or starterlist.get("location", "")
     start_raw = None
     division_num = starterlist.get('divisionNumber')
     divisions = starterlist.get('divisions', [])
@@ -411,15 +499,43 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     if not start_raw:
         start_raw = starterlist.get("start")
     
-    # Location kann auch competitionLocation heißen
-    location = starterlist.get("competitionLocation", "") or starterlist.get("location", "")
     if start_raw:
         date_line = format_datetime_german(start_raw)
         if location:
             date_line = f"{date_line} - {location}"
-        header_parts.append(Paragraph(f"<b>{date_line}</b>", style_sub))  # FETT!
+        date_line_text = date_line
+    else:
+        date_line_text = None
     
-    # Richter (VOR Logo-Tabelle, damit sie in header_parts landen!)
+    # Logo + Header in einer Zeile
+    if logo_path and os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path)
+            max_size = logo_max_width_cm * 10 * mm
+            if logo.drawWidth > max_size or logo.drawHeight > max_size:
+                scale = min(max_size / logo.drawWidth, max_size / logo.drawHeight)
+                logo.drawWidth = logo.drawWidth * scale
+                logo.drawHeight = logo.drawHeight * scale
+            
+            logo_col_width = max(logo.drawWidth + 5*mm, 35*mm)
+            text_col_width = page_width - logo_col_width
+            header_table_data = [[header_parts, logo]]
+            header_table = Table(header_table_data, colWidths=[text_col_width, logo_col_width])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (0,0), (0,0), 'LEFT'),
+                ('ALIGN', (1,0), (1,0), 'RIGHT'),
+                ('RIGHTPADDING', (1,0), (1,0), 0),
+            ]))
+            elements.append(header_table)
+        except:
+            for p in header_parts:
+                elements.append(p)
+    else:
+        for p in header_parts:
+            elements.append(p)
+    
+    # Richter als separate Zeile
     judges = starterlist.get("judges", [])
     if judges:
         pos_map = {0: "E", 1: "H", 2: "C", 3: "M", 4: "B"}
@@ -439,63 +555,43 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         jury_parts = []
         displayed_positions = [p for p in ["E", "H", "C", "M", "B"] if p in judges_by_pos]
         only_c = len(displayed_positions) == 1 and displayed_positions[0] == "C"
-        print(f"DEBUG: displayed_positions={displayed_positions}, only_c={only_c}, judges_by_pos={judges_by_pos}")
         
         for p in ["E", "H", "C", "M", "B"]:
             if p in judges_by_pos:
                 names = ' & '.join(judges_by_pos[p])
                 if only_c:
-                    print(f"DEBUG: Adding judge WITHOUT position box: {names}")
                     jury_parts.append(names)
                 else:
-                    print(f"DEBUG: Adding judge WITH position box: {p} {names}")
                     jury_parts.append(f'<font name="Helvetica-Bold" backColor="black" color="white"> {p} </font> {names}')
         
         if jury_parts:
-            header_parts.append(Paragraph(f"<b>Richter:</b> {' '.join(jury_parts)}", style_sub))
-    
-    # Logo + Header in einer Zeile
-    if logo_path and os.path.exists(logo_path):
-        try:
-            # Logo in Originalgröße laden
-            logo = Image(logo_path)
-            
-            # Maximale Größe: von Parameter (Standard 5cm = 50mm)
-            max_size = logo_max_width_cm * 10 * mm  # cm in mm umrechnen
-            
-            # Wenn das Logo größer als max_size ist, verkleinern (aber nicht vergrößern!)
-            if logo.drawWidth > max_size or logo.drawHeight > max_size:
-                # Proportional skalieren
-                scale = min(max_size / logo.drawWidth, max_size / logo.drawHeight)
-                logo.drawWidth = logo.drawWidth * scale
-                logo.drawHeight = logo.drawHeight * scale
-            
-            # Tabelle: Text links, Logo rechts
-            # Breite dynamisch anpassen an Logobreite + etwas Puffer
-            logo_col_width = max(logo.drawWidth + 5*mm, 35*mm)  # Mindestens 35mm
-            text_col_width = 185*mm - logo_col_width
-            header_table_data = [[header_parts, logo]]
-            header_table = Table(header_table_data, colWidths=[text_col_width, logo_col_width])
-            header_table.setStyle(TableStyle([
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('ALIGN', (0,0), (0,0), 'LEFT'),
-                ('ALIGN', (1,0), (1,0), 'RIGHT'),
-                ('LEFTPADDING', (0,0), (0,0), 0),  # Kein Padding links für Ausrichtung mit Tabelle
-                ('RIGHTPADDING', (1,0), (1,0), 0),
+            judges_para = Paragraph(f"<b>Richter:</b> {' '.join(jury_parts)}", style_sub)
+            judges_table = Table([[judges_para]], colWidths=[page_width])
+            judges_table.setStyle(TableStyle([
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
             ]))
-            elements.append(header_table)
-        except:
-            # Fallback ohne Logo
-            for p in header_parts:
-                elements.append(p)
-    else:
-        # Kein Logo
-        for p in header_parts:
-            elements.append(p)
+            elements.append(judges_table)
     
-    # Spacer und "Starterliste" Überschrift
+    # Starterliste + Datum in einer Zeile
     elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph("<b>Starterliste</b>", style_comp))
+    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_LEFT)
+    starterliste_left = Paragraph("<b>Starterliste</b>", style_comp)
+    if date_line_text:
+        date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)
+        so_table = Table([[starterliste_left, date_right]], colWidths=[page_width * 0.5, page_width * 0.5])
+        so_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('ALIGN', (0,0), (0,0), 'LEFT'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT'),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+        elements.append(so_table)
+    else:
+        elements.append(starterliste_left)
     elements.append(Spacer(1, 2*mm))
     
     # Tabelle - wie pdf_abstammung_logo
@@ -682,8 +778,8 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             pass
     
     # Spaltenbreiten
-    page_width = A4[0] - doc.leftMargin - doc.rightMargin
-    col_widths = [10*mm, 16*mm, 12*mm, 85*mm, 50*mm, 13*mm]  # +5mm Horse, +5mm Athlete
+    # Spaltenbreiten (page_width wurde oben berechnet)
+    col_widths = [10*mm, 16*mm, 12*mm, page_width - 10*mm - 16*mm - 12*mm - 50*mm - 13*mm, 50*mm, 13*mm]
     
     table_rows = []
     for i, row in enumerate(data_texts):
@@ -777,5 +873,8 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     elements.append(t)
     
     # Build mit Footer-Canvas
-    doc.build(elements, canvasmaker=BannerCanvas)
+    if show_banner or show_sponsor_bar:
+        doc.build(elements, canvasmaker=BannerCanvas)
+    else:
+        doc.build(elements)
     print(f"PDF NAT: {filename}")
