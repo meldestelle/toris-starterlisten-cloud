@@ -5,6 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
@@ -450,11 +451,13 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         start_raw = starterlist.get('start')
         print(f"DEBUG: Using starterlist fallback start: {start_raw}")
     
+    date_line_text = None
     if start_raw:
         date_line = _fmt_header_datetime(start_raw)
         if location:
             date_line = f"{date_line}  -  {location}"
-        header_parts.append(Paragraph(f"<b>{date_line}</b>", style_sub))
+        date_line_text = date_line
+        # Datum NICHT mehr in header_parts - kommt in Starterliste-Zeile
 
     # Logo + Header in Tabelle (Text links, Logo rechts) - wie dre3
     if logo_path and os.path.exists(logo_path):
@@ -492,6 +495,25 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     print("DEBUG: Finished datetime section, starting starterlist processing...")
 
     # --- STARTERLISTE MIT GRUPPIERUNGSLOGIK ---
+    # Starterliste + Datum in einer Zeile
+    elements.append(Spacer(1, 1*mm))
+    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_RIGHT)
+    starterliste_left = Paragraph("<b>Starterliste</b>", style_comp)
+    if date_line_text:
+        date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)
+        so_table = Table([[starterliste_left, date_right]], colWidths=[page_width * 0.5, page_width * 0.5])
+        so_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('ALIGN', (0,0), (0,0), 'LEFT'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT'),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+        elements.append(so_table)
+    else:
+        elements.append(starterliste_left)
+    elements.append(Spacer(1, 2*mm))
+
     starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
     breaks_by_after = {}

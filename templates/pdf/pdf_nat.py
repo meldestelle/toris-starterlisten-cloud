@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
@@ -577,7 +577,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     
     # Starterliste + Datum in einer Zeile
     elements.append(Spacer(1, 1*mm))
-    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_LEFT)
+    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_RIGHT)
     starterliste_left = Paragraph("<b>Starterliste</b>", style_comp)
     if date_line_text:
         date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)

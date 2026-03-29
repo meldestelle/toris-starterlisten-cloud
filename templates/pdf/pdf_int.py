@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
@@ -367,7 +367,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                     self.addPageTemplates([PageTemplate(id='AllPages', frames=[frame_all])])
             doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
         else:
-            from reportlab.platypus import BaseDocTemplate
+            from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
             class CustomDocTemplate(BaseDocTemplate):
                 def __init__(self, filename, **kw):
                     self.allowSplitting = 1
@@ -584,7 +584,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     
     elements.append(Spacer(1, 1*mm))
     # Starting Order links, Datum/Ort rechts in einer Zeile
-    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_LEFT)
+    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_RIGHT)
     starting_order_left = Paragraph("<b>Starting Order</b>", style_comp)
     if date_line_text:
         date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)

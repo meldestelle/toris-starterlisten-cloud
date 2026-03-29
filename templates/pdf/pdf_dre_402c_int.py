@@ -5,6 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
@@ -422,7 +423,7 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
                     self.addPageTemplates([PageTemplate(id='AllPages', frames=[frame_all])])
             doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
         else:
-            from reportlab.platypus import BaseDocTemplate
+            from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
             class CustomDocTemplate(BaseDocTemplate):
                 def __init__(self, filename, **kw):
                     self.allowSplitting = 1
@@ -552,11 +553,13 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     if not start_raw:
         start_raw = comp.get("start") or starterlist.get("start") or show.get("start")
     
+    date_line_text = None
     if start_raw:
         date_line = _fmt_header_datetime(start_raw)
         if location:
             date_line = f"{date_line}  -  {location}"
-        header_parts.append(Paragraph(f"<b>{date_line}</b>", style_sub))
+        date_line_text = date_line
+        # Datum NICHT mehr in header_parts - kommt in Starterliste-Zeile
 
     if logo_path and os.path.exists(logo_path):
         try:
@@ -590,6 +593,25 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
 
 
     # TABELLE - 6 SPALTEN für 402.C (Start|KoNr|Reiter/Pferd|Aufgabe|Qualität|Total)
+    # Starterliste + Datum in einer Zeile
+    elements.append(Spacer(1, 1*mm))
+    style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_RIGHT)
+    starterliste_left = Paragraph("<b>Starting Order</b>", style_comp)
+    if date_line_text:
+        date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)
+        so_table = Table([[starterliste_left, date_right]], colWidths=[page_width * 0.5, page_width * 0.5])
+        so_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('ALIGN', (0,0), (0,0), 'LEFT'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT'),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+        elements.append(so_table)
+    else:
+        elements.append(starterliste_left)
+    elements.append(Spacer(1, 2*mm))
+
     starters = starterlist.get("starters") or []
     breaks = starterlist.get("breaks") or []
     breaks_by_after = {}
