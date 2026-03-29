@@ -26,6 +26,43 @@ WEEKDAY_MAP = {
 }
 
 FIXED_WORD_TEMPLATE = "word_details_modern_simple.docx"
+
+def get_country_name(ioc_code):
+    """Gibt deutschen Ländernamen für IOC-Code zurück"""
+    countries = {
+        "GER": "Deutschland", "AUT": "Österreich", "SUI": "Schweiz",
+        "NED": "Niederlande", "BEL": "Belgien", "FRA": "Frankreich",
+        "GBR": "Großbritannien", "IRL": "Irland", "SWE": "Schweden",
+        "NOR": "Norwegen", "DEN": "Dänemark", "FIN": "Finnland",
+        "POL": "Polen", "CZE": "Tschechien", "HUN": "Ungarn",
+        "ITA": "Italien", "ESP": "Spanien", "POR": "Portugal",
+        "USA": "USA", "CAN": "Kanada", "BRA": "Brasilien",
+        "AUS": "Australien", "NZL": "Neuseeland", "RSA": "Südafrika",
+        "UAE": "Vereinigte Arabische Emirate", "QAT": "Katar",
+        "BHR": "Bahrain", "KSA": "Saudi-Arabien", "MEX": "Mexiko",
+        "ARG": "Argentinien", "CHI": "Chile", "COL": "Kolumbien",
+        "JPN": "Japan", "CHN": "China", "KOR": "Südkorea",
+    }
+    return countries.get(str(ioc_code).upper(), str(ioc_code))
+
+def set_light_gray_background(row):
+    """Hellgraue Hintergrundfarbe (wie im PDF)"""
+    for cell in row.cells:
+        tcPr = cell._tc.get_or_add_tcPr()
+        shd = OxmlElement('w:shd')
+        shd.set(qn('w:fill'), 'E8E8E8')
+        tcPr.append(shd)
+
+
+def _set_odd_even_headers(doc):
+    """Setzt 'Gerade & ungerade Seiten unterschiedlich' in Word-Einstellungen"""
+    settings = doc.settings.element
+    # Prüfen ob bereits vorhanden
+    if settings.find(qn('w:evenAndOddHeaders')) is None:
+        even_odd = OxmlElement('w:evenAndOddHeaders')
+        settings.insert(0, even_odd)
+
+
 OUTPUT_DIR = "Ausgabe"
 
 def _ensure_output_dir():
@@ -160,8 +197,10 @@ def _set_table_borders(table):
             
             tcPr.append(tcBorders)
 
-def _add_sponsorship_footer(doc):
+def _add_sponsorship_footer(doc, show_sponsor_bar=True, show_banner=False):
     """Fügt Sponsorenleiste im Footer jeder Seite hinzu"""
+    if not show_sponsor_bar:
+        return
     sponsor_logo_path = os.path.join("logos", "sponsorenleiste.png")
     if os.path.exists(sponsor_logo_path):
         try:
@@ -170,12 +209,22 @@ def _add_sponsorship_footer(doc):
                 footer_para = footer.paragraphs[0]
                 footer_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
                 footer_para.clear()
-                
                 footer_run = footer_para.add_run()
                 footer_run.add_picture(sponsor_logo_path, width=Inches(7.5))
-                
                 footer_para.paragraph_format.space_after = Pt(0)
                 footer_para.paragraph_format.space_before = Pt(0)
+                # Bei Banner auch first_page_footer befüllen
+                if show_banner and section.different_first_page_header_footer:
+                    try:
+                        _fpf = section.first_page_footer
+                        _fpfp = _fpf.paragraphs[0] if _fpf.paragraphs else _fpf.add_paragraph()
+                        _fpfp.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                        _fpfp.clear()
+                        _fpfr = _fpfp.add_run()
+                        _fpfr.add_picture(sponsor_logo_path, width=Inches(7.5))
+                        _fpfp.paragraph_format.space_after = Pt(0)
+                        _fpfp.paragraph_format.space_before = Pt(0)
+                    except: pass
             
             print(f"WORD DRE 402C LOGO DEBUG: Sponsorenleiste im Footer hinzugefügt: {sponsor_logo_path}")
         except Exception as e:
@@ -415,6 +464,17 @@ def render(starterlist: dict, filename: str):
             raise ValueError(f"starterlist is a string but not valid JSON: {e}")
 
     _ensure_output_dir()
+    # Druckoptionen auslesen
+    print_options     = starterlist.get("printOptions", {})
+    show_header       = print_options.get("show_header",      True)
+    show_banner       = print_options.get("show_banner",      True)
+    show_sponsor_bar  = print_options.get("show_sponsor_bar", True)
+    show_title_opt    = print_options.get("show_title",       True)
+    sponsor_top       = print_options.get("sponsor_top",      False)
+    sponsor_bottom    = print_options.get("sponsor_bottom",   False)
+    spacing_top_cm    = starterlist.get("spacingTopCm",   3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm",2.0)
+
     
     template_path = os.path.join("templates", "word", FIXED_WORD_TEMPLATE)
     if not os.path.exists(template_path):
@@ -425,6 +485,63 @@ def render(starterlist: dict, filename: str):
     
     print("WORD DRE 402C LOGO DEBUG: Loading document from template")
     doc = Document(output_path)
+
+    # Seitenformat + Banner
+    _section = doc.sections[0]
+    _section.page_height = Inches(11.69)
+    _section.page_width  = Inches(8.27)
+    _section.left_margin  = Inches(0.5)
+    _section.right_margin = Inches(0.5)
+    _MIN_TOP    = Inches(10 / 25.4)
+    _MIN_BOTTOM = Inches(0.26)
+    _SP_TOP     = Inches(spacing_top_cm / 2.54)
+    _SP_BOTTOM  = Inches(spacing_bottom_cm / 2.54)
+
+    if sponsor_top or sponsor_bottom:
+        _section.different_odd_and_even_pages_header_footer = True
+        _set_odd_even_headers(doc)
+    if sponsor_top:
+        _section.header_distance = Inches(0.2)
+        _section.top_margin      = _SP_TOP
+    else:
+        _section.header_distance = Inches(0.2)
+        _section.top_margin      = _MIN_TOP
+
+    if sponsor_bottom:
+        _section.footer_distance = _SP_BOTTOM
+        _section.bottom_margin   = _SP_BOTTOM
+    else:
+        _section.footer_distance = Inches(0.24)
+        _section.bottom_margin   = _MIN_BOTTOM
+    if show_banner:
+        _bp = "logos/banner.png"
+        if os.path.exists(_bp):
+            try:
+                from PIL import Image as _BPIL
+                _bi = _BPIL.open(_bp)
+                _bw, _bh = _bi.size
+                _bd = _bi.info.get('dpi', (96, 96))
+                _bdx = float(_bd[0]) if isinstance(_bd, tuple) else float(_bd)
+                if _bdx < 1: _bdx = 96.0
+                _bh_in = _bh / _bdx
+                _section.different_first_page_header_footer = True
+                _section.header_distance = Inches(0)
+                _section.top_margin = Inches(_bh_in + 0.04)
+                _section.left_margin  = Inches(0.5)
+                _section.right_margin = Inches(0.5)
+                _fph = _section.first_page_header
+                for _p in _fph.paragraphs: _p.clear()
+                _hp = _fph.paragraphs[0]
+                _hp.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+                _pPr = _hp._p.get_or_add_pPr()
+                _sp = OxmlElement('w:spacing'); _sp.set(qn('w:before'),'0'); _sp.set(qn('w:after'),'220'); _pPr.append(_sp)  # 220 twips ≈ 3.9mm
+                _ind = OxmlElement('w:ind'); _ind.set(qn('w:left'),str(-720)); _ind.set(qn('w:right'),'0'); _ind.set(qn('w:hanging'),'0'); _pPr.append(_ind)
+                _hr = _hp.add_run()
+                _hr.add_picture(_bp, width=Inches(8.27))
+                _nh = _section.header; _nh.is_linked_to_previous = False
+                for _p in _nh.paragraphs: _p.clear()
+            except Exception as _be:
+                print(f"Banner Fehler: {_be}")
     
     # Find and replace STARTER_TABLE placeholder
     print("WORD DEBUG: Looking for STARTER_TABLE placeholder")
@@ -443,7 +560,7 @@ def render(starterlist: dict, filename: str):
         placeholder_paragraph = doc.add_paragraph("STARTER_TABLE")
 
     # Extract data from starterlist
-    show_title = starterlist.get("showTitle", "")
+    show_title = starterlist.get("showTitle", "") if show_title_opt else ""
     comp_title = starterlist.get("competitionTitle", "")
     comp_number = starterlist.get("competitionNumber", "")
     comp_subtitle = starterlist.get("subtitle", "")
@@ -482,90 +599,149 @@ def render(starterlist: dict, filename: str):
     # Remove the placeholder paragraph first
     placeholder_paragraph._element.getparent().remove(placeholder_paragraph._element)
 
-    # LOGO DIREKT AM ANFANG
-    logo_path = starterlist.get("logoPath")
-    if logo_path and os.path.exists(logo_path):
-        try:
-            logo_para = doc.add_paragraph()
-            logo_para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-            logo_run = logo_para.add_run()
-            logo_run.add_picture(logo_path, width=Inches(1.2))
-            logo_para.paragraph_format.space_after = Pt(0)
-            logo_para.paragraph_format.space_before = Pt(0)
-            
-            spacer_para = doc.add_paragraph()
-            spacer_para.paragraph_format.space_before = Pt(-30)
-            spacer_para.paragraph_format.space_after = Pt(0)
-            
-            print(f"WORD DRE 402C LOGO DEBUG: Logo positioned at top right: {logo_path}")
-        except Exception as e:
-            print(f"WORD DRE 402C LOGO DEBUG: Logo error: {e}")
+    if show_header:
+        logo_path = starterlist.get("logoPath")
+        logo_max_width_cm = starterlist.get("logoMaxWidthCm", 5.0)
+        logo_inches = logo_max_width_cm / 2.54
+        page_twips = int(7.27 * 1440)
+        logo_twips = int((logo_inches + 0.1) * 1440)
+        text_twips = page_twips - logo_twips
 
-    # HEADER
-    print("WORD DEBUG: Creating COMPLETE but COMPACT header")
-
-    if show_title:
-        title_para = doc.add_paragraph()
-        title_run = title_para.add_run(show_title)
-        title_run.font.size = Pt(18)
-        title_run.font.bold = True
-        title_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        title_para.paragraph_format.space_after = Pt(0)
-        title_para.paragraph_format.space_before = Pt(0)
-        title_para.paragraph_format.line_spacing = 1.0
-
-    if comp_info:
-        processed_info_text = _process_information_text(comp_info)
-        info_para = doc.add_paragraph()
-        run = info_para.add_run(processed_info_text)
-        run.font.size = Pt(14)
-        run.font.bold = True
-        info_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        info_para.paragraph_format.space_before = Pt(0)
-        info_para.paragraph_format.space_after = Pt(0)
-        info_para.paragraph_format.line_spacing = 1.0
-
-    if comp_number or comp_title:
-        comp_line = f"Prüfung {comp_number}"
-        if comp_title:
-            comp_line += f" – {comp_title}"
-        if division_number:
+        if logo_path and os.path.exists(logo_path):
+            h_table = doc.add_table(rows=1, cols=2)
+            h_tbl = h_table._tbl
+            h_tbl_pr = h_tbl.find(qn("w:tblPr"))
+            if h_tbl_pr is None:
+                h_tbl_pr = OxmlElement("w:tblPr"); h_tbl.insert(0, h_tbl_pr)
+            h_borders = OxmlElement("w:tblBorders")
+            for bn in ["top","left","bottom","right","insideH","insideV"]:
+                b = OxmlElement(f"w:{bn}"); b.set(qn("w:val"), "none"); h_borders.append(b)
+            h_tbl_pr.append(h_borders)
+            h_tbl_w = OxmlElement("w:tblW")
+            h_tbl_w.set(qn("w:w"), str(page_twips)); h_tbl_w.set(qn("w:type"), "dxa"); h_tbl_pr.append(h_tbl_w)
+            tbl_grid = OxmlElement("w:tblGrid")
+            for tw in [text_twips, logo_twips]:
+                gc = OxmlElement("w:gridCol"); gc.set(qn("w:w"), str(tw)); tbl_grid.append(gc)
+            h_tbl.insert(list(h_tbl).index(h_tbl_pr) + 1, tbl_grid)
+            left_cell = h_table.rows[0].cells[0]
+            right_cell = h_table.rows[0].cells[1]
+            for cell, tw in zip([left_cell, right_cell], [text_twips, logo_twips]):
+                tc_pr = cell._tc.get_or_add_tcPr()
+                tc_w = OxmlElement("w:tcW"); tc_w.set(qn("w:w"), str(tw)); tc_w.set(qn("w:type"), "dxa"); tc_pr.append(tc_w)
+            first_tracker = [True]
+            def _add_h(cell, text, sz, bold, sa=4):
+                if first_tracker[0]:
+                    p = cell.paragraphs[0]; p.clear(); first_tracker[0] = False
+                else:
+                    p = cell.add_paragraph()
+                r = p.add_run(text); r.font.size = Pt(sz); r.font.bold = bold
+                p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(sa)
+                return p
+            if show_title: _add_h(left_cell, show_title, 14, True, sa=2)
+            if comp_number or comp_title:
+                _cl = f"Prüfung {comp_number}"
+                if comp_title: _cl += f" \u2014 {comp_title}"
+                if division_number:
+                    try:
+                        _dn = int(division_number)
+                        if _dn > 0: _cl += f" - {_dn}. Abt."
+                    except: pass
+                _add_h(left_cell, _cl, 11, True, sa=4)
+            if comp_info: _add_h(left_cell, comp_info.lstrip("\n"), 10, False, sa=4)
+            if comp_subtitle: _add_h(left_cell, comp_subtitle, 10, False, sa=4)
+            # Logo rechts
+            r_para = right_cell.paragraphs[0]
+            r_para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+            r_para.paragraph_format.space_before = Pt(0)
+            r_para.paragraph_format.space_after = Pt(0)
+            r_run = r_para.add_run()
+            r_run.add_picture(logo_path, width=Inches(logo_inches))
+            # behindDoc=1
             try:
-                div_num = int(division_number)
-                if div_num > 0:
-                    comp_line += f" - {div_num}. Abt." if "abt" not in comp_title.lower() else ""
-            except:
-                pass
-        
-        comp_para = doc.add_paragraph()
-        run = comp_para.add_run(comp_line)
-        run.font.size = Pt(12)
-        run.font.bold = True
-        comp_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        comp_para.paragraph_format.space_before = Pt(0)
-        comp_para.paragraph_format.space_after = Pt(0)
-        comp_para.paragraph_format.line_spacing = 1.0
+                import copy as _copy
+                _wp = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                _am = "http://schemas.openxmlformats.org/drawingml/2006/main"
+                inline = r_run._r.find(f"{{{_wp}}}inline")
+                if inline is not None:
+                    anchor = OxmlElement("wp:anchor")
+                    for k,v in [("distT","0"),("distB","0"),("distL","114300"),("distR","114300"),
+                                 ("simplePos","0"),("relativeHeight","251658240"),("behindDoc","1"),
+                                 ("locked","0"),("layoutInCell","1"),("allowOverlap","0")]:
+                        anchor.set(k, v)
+                    sp = OxmlElement("wp:simplePos"); sp.set("x","0"); sp.set("y","0"); anchor.append(sp)
+                    posH = OxmlElement("wp:positionH"); posH.set("relativeFrom","margin")
+                    alignH = OxmlElement("wp:align"); alignH.text = "right"; posH.append(alignH); anchor.append(posH)
+                    posV = OxmlElement("wp:positionV"); posV.set("relativeFrom","margin")
+                    alignV = OxmlElement("wp:align"); alignV.text = "top"; posV.append(alignV); anchor.append(posV)
+                    extent = inline.find(f"{{{_wp}}}extent")
+                    if extent is not None: anchor.append(_copy.deepcopy(extent))
+                    eff = OxmlElement("wp:effectExtent")
+                    for a in ["l","t","r","b"]: eff.set(a,"0")
+                    anchor.append(eff)
+                    anchor.append(OxmlElement("wp:wrapNone"))
+                    docPr = inline.find(f"{{{_wp}}}docPr")
+                    if docPr is not None: anchor.append(_copy.deepcopy(docPr))
+                    anchor.append(OxmlElement("wp:cNvGraphicFramePr"))
+                    a_graphic = inline.find(f"{{{_am}}}graphic")
+                    if a_graphic is None:
+                        for child in inline:
+                            if child.tag.endswith("}graphic"): a_graphic = child; break
+                    if a_graphic is not None: anchor.append(_copy.deepcopy(a_graphic))
+                    drawing = inline.getparent()
+                    if drawing is not None: drawing.replace(inline, anchor)
+            except Exception as _be:
+                print(f"behindDoc Fehler: {_be}")
+        else:
+            def _add_d(text, sz, bold, sa=4):
+                p = doc.add_paragraph()
+                r = p.add_run(text); r.font.size = Pt(sz); r.font.bold = bold
+                p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(sa)
+            if show_title: _add_d(show_title, 14, True, sa=2)
+            if comp_number or comp_title:
+                _cl = f"Prüfung {comp_number}"
+                if comp_title: _cl += f" \u2014 {comp_title}"
+                if division_number:
+                    try:
+                        _dn = int(division_number)
+                        if _dn > 0: _cl += f" - {_dn}. Abt."
+                    except: pass
+                _add_d(_cl, 11, True, sa=4)
+            if comp_info: _add_d(comp_info.lstrip("\n"), 10, False, sa=4)
+            if comp_subtitle: _add_d(comp_subtitle, 10, False, sa=4)
 
-    if comp_subtitle:
-        sub_para = doc.add_paragraph()
-        run = sub_para.add_run(comp_subtitle)
-        run.font.size = Pt(11)
-        sub_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        sub_para.paragraph_format.space_before = Pt(0)
-        sub_para.paragraph_format.space_after = Pt(0)
-        sub_para.paragraph_format.line_spacing = 1.0
+    # Datum für Starterliste-Zeile
+    _date_text = _format_header_datetime(start_time) if start_time else ""
+    if _date_text and location:
+        _date_text += f" - {location}"
 
-    if start_time:
-        date_text = _format_header_datetime(start_time)
-        if location:
-            date_text += f" - {location}"
-        date_para = doc.add_paragraph()
-        run = date_para.add_run(date_text)
-        run.font.size = Pt(11)
-        date_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        date_para.paragraph_format.space_before = Pt(0)
-        date_para.paragraph_format.space_after = Pt(3)
-        date_para.paragraph_format.line_spacing = 1.0
+    # "Starterliste" links + Datum rechtsbündig
+    _PAGE_TWIPS = int(7.27 * 1440)
+    p_sl = doc.add_paragraph()
+    _pPr_sl = p_sl._p.get_or_add_pPr()
+    # Paragraph-Einzug explizit auf 0
+    _ind = OxmlElement('w:ind')
+    _ind.set(qn('w:left'), '0')
+    _ind.set(qn('w:right'), '0')
+    _pPr_sl.append(_ind)
+    # Tab-Stop rechts
+    _tabs_sl = OxmlElement('w:tabs')
+    _tab_sl  = OxmlElement('w:tab')
+    _tab_sl.set(qn('w:val'), 'right')
+    _tab_sl.set(qn('w:pos'), str(_PAGE_TWIPS))
+    _tabs_sl.append(_tab_sl)
+    _pPr_sl.append(_tabs_sl)
+    p_sl.paragraph_format.space_before = Pt(2)
+    p_sl.paragraph_format.space_after  = Pt(2)
+    p_sl.paragraph_format.left_indent  = 0
+    p_sl.paragraph_format.right_indent = 0
+    run_sl = p_sl.add_run("Starterliste")
+    run_sl.font.bold = True
+    run_sl.font.size = Pt(12)
+    if _date_text:
+        p_sl.add_run("\t")
+        run_sl_date = p_sl.add_run(_date_text)
+        run_sl_date.font.bold = True
+        run_sl_date.font.size = Pt(10)
 
     # Get judges
     judges = starterlist.get("judges", [])
@@ -646,8 +822,12 @@ def render(starterlist: dict, filename: str):
     breaks_map = {}
     for br in breaks:
         try:
-            after_num = int(br.get("afterNumberInCompetition", -1))
-            breaks_map[after_num] = br
+            after_num = br.get("afterNumberInCompetition")
+            if after_num is None:
+                k = -1
+            else:
+                k = int(after_num)
+            breaks_map[k] = br
         except:
             continue
 
@@ -659,7 +839,50 @@ def render(starterlist: dict, filename: str):
             starters_by_group[group_num] = []
         starters_by_group[group_num].append(starter)
     
-    # Gruppen sortiert verarbeiten
+    # Pause VOR erstem Starter (afterNumberInCompetition=0)
+    row_counter = 0
+    if 0 in breaks_map:
+        break_info = breaks_map[0]
+        total_seconds = int(break_info.get("totalSeconds", 0) or 0)
+        info_text = break_info.get("informationText", "")
+        if total_seconds > 0:
+            hours = total_seconds // 3600
+            mins = (total_seconds % 3600) // 60
+            if hours > 0:
+                break_text = f"Pause ({hours} h {mins:02d} min)"
+            else:
+                break_text = f"Pause ({mins} min)"
+            if info_text:
+                break_text = f"{break_text} - {info_text}"
+        else:
+            break_text = info_text or "Pause"
+        br_row = table.add_row()
+        _set_row_height_auto(br_row)
+        _set_row_keep_together(br_row)
+        p_br = br_row.cells[0].paragraphs[0]
+        p_br.clear()
+        run_br = p_br.add_run(break_text)
+        run_br.font.size = Pt(10)
+        run_br.font.bold = True
+        p_br.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        p_br.paragraph_format.space_before = Pt(5)
+        p_br.paragraph_format.space_after  = Pt(5)
+        _optimize_paragraph_spacing(p_br)
+        for i in range(1, 6):
+            br_row.cells[i].paragraphs[0].clear()
+        cell_0 = br_row.cells[0]
+        for i in range(1, 6):
+            cell_0.merge(br_row.cells[i])
+        tc_pr_b0 = cell_0._tc.get_or_add_tcPr()
+        v_align0 = OxmlElement('w:vAlign')
+        v_align0.set(qn('w:val'), 'center')
+        tc_pr_b0.append(v_align0)
+        # Zebra für Pause-0
+        if row_counter % 2 == 1:
+            set_light_gray_background(br_row)
+        row_counter += 1
+
+        # Gruppen sortiert verarbeiten
     for group_num in sorted(starters_by_group.keys()):
         group_starters = starters_by_group[group_num]
         
@@ -702,12 +925,18 @@ def render(starterlist: dict, filename: str):
         for starter_idx, starter in enumerate(group_starters):
             row = table.add_row()
             row_cells = row.cells
-            
+
+            if row_counter % 2 == 1:
+                set_light_gray_background(row)
+            row_counter += 1
+
             _set_row_height_auto(row)
             _set_row_keep_together(row)
-            
+
             # Column 0: Start number and time
             start_num = starter.get("startNumber", "")
+            is_withdrawn = starter.get("withdrawn", False)
+            is_hors_concours = starter.get("horsConcours", False)
             
             p0 = row_cells[0].paragraphs[0]
             p0.clear()
@@ -718,7 +947,10 @@ def render(starterlist: dict, filename: str):
                 run = p0.add_run(str(start_num))
                 run.font.bold = True
                 run.font.size = Pt(9)
-            
+                if is_withdrawn:
+                    run.font.strike = True
+
+
             # Zeit anzeigen: Entweder bei jedem Starter (wenn keine Abteilungen) oder nur beim ersten der Gruppe
             if len(starters_by_group) == 1:  # Keine Abteilungen - zeige immer die Zeit
                 individual_start_time = starter.get("startTime")
@@ -753,6 +985,17 @@ def render(starterlist: dict, filename: str):
             # Column 2: Combined Rider + Horse info
             athlete = starter.get("athlete", {})
             rider_name = _safe_get(athlete, "name", "")
+
+            club = athlete.get("club", "") if athlete else ""
+            nationality = athlete.get("nation", "") if athlete else ""
+            club_or_country = ""
+            if nationality and nationality.upper() != "GER":
+                if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
+                    club_or_country = get_country_name(nationality)
+                else:
+                    club_or_country = club
+            elif club:
+                club_or_country = club
             
             p2 = row_cells[2].paragraphs[0]
             p2.clear()
@@ -762,7 +1005,9 @@ def render(starterlist: dict, filename: str):
             
             # Reiter (immer fett und Großbuchstaben)
             if rider_name:
-                content_parts.append(rider_name.upper())
+                content_parts.append(rider_name)
+            if club_or_country:
+                content_parts.append(("club", club_or_country))
             
             if horses:
                 horse = horses[0]
@@ -827,7 +1072,11 @@ def render(starterlist: dict, filename: str):
                     p2.add_run("\n")
                 
                 # Spezialbehandlung für Pferd+Zuchtgebiet (kombinierte Zeile)
-                if isinstance(part, list):  # Liste von (Text, Bold) Tupeln
+                if isinstance(part, tuple) and part[0] == "club":
+                    run = p2.add_run(part[1])
+                    run.font.size = Pt(7)
+                    run.font.bold = False
+                elif isinstance(part, list):  # Liste von (Text, Bold) Tupeln
                     for text, is_bold in part:
                         run = p2.add_run(text)
                         run.font.bold = is_bold
@@ -851,20 +1100,21 @@ def render(starterlist: dict, filename: str):
             # Column 5: Total column
             p5 = row_cells[5].paragraphs[0]
             p5.clear()
+            if is_hors_concours:
+                ak_run = p5.add_run("AK")
+                ak_run.font.size = Pt(8)
+                ak_run.font.bold = True
+                p5.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                if is_withdrawn:
+                    ak_run.font.strike = True
             p5.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             _optimize_paragraph_spacing(p5)
 
-            # Handle withdrawn entries
-            if starter.get("withdrawn", False):
+            # Handle withdrawn entries - nur durchgestrichen, Zebra-Farbe bleibt
+            if is_withdrawn:
                 for cell in row_cells:
-                    tcPr = cell._tc.get_or_add_tcPr()
-                    shd = OxmlElement('w:shd')
-                    shd.set(qn('w:fill'), 'D9D9D9')
-                    tcPr.append(shd)
-                    
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
-                            run.font.color.rgb = RGBColor(96, 96, 96)
                             run.font.strike = True
 
             # Check for breaks
@@ -901,6 +1151,8 @@ def render(starterlist: dict, filename: str):
                     run.font.size = Pt(10)
                     run.font.bold = True
                     p_break.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                    p_break.paragraph_format.space_before = Pt(5)
+                    p_break.paragraph_format.space_after  = Pt(5)
                     _optimize_paragraph_spacing(p_break)
                     
                     # Clear other cells and merge (6 columns for 402.C)
@@ -910,17 +1162,26 @@ def render(starterlist: dict, filename: str):
                     cell_0 = break_cells[0]
                     for i in range(1, 6):
                         cell_0.merge(break_cells[i])
+                    tc_pr_b = cell_0._tc.get_or_add_tcPr()
+                    v_align = OxmlElement('w:vAlign')
+                    v_align.set(qn('w:val'), 'center')
+                    tc_pr_b.append(v_align)
+                    # Vertikale Zentrierung der Pause-Zelle
+                    tc_pr_break = cell_0._tc.get_or_add_tcPr()
+                    v_align = OxmlElement('w:vAlign')
+                    v_align.set(qn('w:val'), 'center')
+                    tc_pr_break.append(v_align)
                     
-                    tcPr = cell_0._tc.get_or_add_tcPr()
-                    shd = OxmlElement('w:shd')
-                    shd.set(qn('w:fill'), 'D9D9D9')
-                    tcPr.append(shd)
+                    break_is_gray = (row_counter % 2 == 1)
+                    row_counter += 1
+                    if break_is_gray:
+                        set_light_gray_background(break_row)
                     
             except (ValueError, TypeError):
                 pass
 
     _set_table_borders(table)
-    _add_sponsorship_footer(doc)
+    _add_sponsorship_footer(doc, show_sponsor_bar=show_sponsor_bar, show_banner=show_banner)
 
     # Add judges section - ZEIGT ALLE 3 RICHTER EINZELN MIT AUFGABEN
     if judges:

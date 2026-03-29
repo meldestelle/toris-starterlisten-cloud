@@ -12,6 +12,15 @@ from docx.oxml.ns import nsdecls
 from docx.oxml import parse_xml
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
+def _set_odd_even_headers(doc):
+    """Setzt 'Gerade & ungerade Seiten unterschiedlich' in Word-Einstellungen"""
+    settings = doc.settings.element
+    # Prüfen ob bereits vorhanden
+    if settings.find(qn('w:evenAndOddHeaders')) is None:
+        even_odd = OxmlElement('w:evenAndOddHeaders')
+        settings.insert(0, even_odd)
+
+
 OUTPUT_DIR = "Ausgabe"
 
 def _ensure_output_dir():
@@ -28,13 +37,26 @@ def safe_get(dictionary, key, default=""):
     return default
 
 def format_header_datetime(time_iso):
-    """Zeit formatieren für Header - ENGLISCH"""
+    """Zeit formatieren für Header"""
     if not time_iso:
         return ""
     try:
         dt = datetime.fromisoformat(str(time_iso).replace("Z", ""))
-        # English format: Wednesday, March 19, 2025 14:00
-        return dt.strftime("%A, %B %d, %Y %H:%M")
+        weekday_map = {
+            "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
+            "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag",
+            "Sunday": "Sonntag"
+        }
+        month_map = {
+            "January": "Januar", "February": "Februar", "March": "März", "April": "April",
+            "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
+            "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
+        }
+        weekday_en = dt.strftime("%A")
+        month_en = dt.strftime("%B")
+        weekday_de = weekday_map.get(weekday_en, weekday_en)
+        month_de = month_map.get(month_en, month_en)
+        return f"{weekday_de}, {dt.day}. {month_de} {dt.year} {dt.strftime('%H:%M')} Uhr"
     except:
         return str(time_iso)
 
@@ -1012,8 +1034,8 @@ def set_column_widths(table):
                 tcW.set(qn('w:type'), 'dxa')
                 tcPr.append(tcW)
 
-def set_row_height_auto(row):
-    """Set row height to auto"""
+def set_row_height_auto(row, cant_split=False):
+    """Set row height to auto, optionally prevent page breaks within row"""
     tr = row._tr
     trPr = tr.get_or_add_trPr()
     
@@ -1025,6 +1047,13 @@ def set_row_height_auto(row):
     trHeight.set(qn('w:val'), '0')
     trHeight.set(qn('w:hRule'), 'auto')
     trPr.append(trHeight)
+
+    if cant_split:
+        cantSplit = trPr.find(qn('w:cantSplit'))
+        if cantSplit is None:
+            cantSplit = OxmlElement('w:cantSplit')
+            trPr.append(cantSplit)
+        cantSplit.set(qn('w:val'), '1')
 
 def set_cell_margins_tight(table):
     """Set tight cell margins"""
@@ -1107,6 +1136,16 @@ def render(starterlist, filename):
             raise ValueError(f"starterlist is a string but not valid JSON: {e}")
     
     _ensure_output_dir()
+    # Druckoptionen auslesen
+    print_options     = starterlist.get("printOptions", {})
+    show_header       = print_options.get("show_header",      True)
+    show_banner       = print_options.get("show_banner",      True)
+    show_sponsor_bar  = print_options.get("show_sponsor_bar", True)
+    show_title_opt    = print_options.get("show_title",       True)
+    sponsor_top       = print_options.get("sponsor_top",      False)
+    sponsor_bottom    = print_options.get("sponsor_bottom",   False)
+    spacing_top_cm    = starterlist.get("spacingTopCm",   3.0)
+    spacing_bottom_cm = starterlist.get("spacingBottomCm",2.0)
     
     # Output path - IMMER ins Ausgabe-Verzeichnis!
     output_path = os.path.join(OUTPUT_DIR, filename)
@@ -1114,6 +1153,63 @@ def render(starterlist, filename):
     
     # Neues Dokument erstellen
     doc = Document()
+
+    # Seitenformat + Banner
+    _section = doc.sections[0]
+    _section.page_height = Inches(11.69)
+    _section.page_width  = Inches(8.27)
+    _section.left_margin  = Inches(0.5)
+    _section.right_margin = Inches(0.5)
+    _MIN_TOP    = Inches(10 / 25.4)
+    _MIN_BOTTOM = Inches(0.26)
+    _SP_TOP     = Inches(spacing_top_cm / 2.54)
+    _SP_BOTTOM  = Inches(spacing_bottom_cm / 2.54)
+
+    if sponsor_top or sponsor_bottom:
+        _section.different_odd_and_even_pages_header_footer = True
+        _set_odd_even_headers(doc)
+    if sponsor_top:
+        _section.header_distance = Inches(0.2)
+        _section.top_margin      = _SP_TOP
+    else:
+        _section.header_distance = Inches(0.2)
+        _section.top_margin      = _MIN_TOP
+
+    if sponsor_bottom:
+        _section.footer_distance = _SP_BOTTOM
+        _section.bottom_margin   = _SP_BOTTOM
+    else:
+        _section.footer_distance = Inches(0.24)
+        _section.bottom_margin   = _MIN_BOTTOM
+    if show_banner:
+        _bp = "logos/banner.png"
+        if os.path.exists(_bp):
+            try:
+                from PIL import Image as _BPIL
+                _bi = _BPIL.open(_bp)
+                _bw, _bh = _bi.size
+                _bd = _bi.info.get('dpi', (96, 96))
+                _bdx = float(_bd[0]) if isinstance(_bd, tuple) else float(_bd)
+                if _bdx < 1: _bdx = 96.0
+                _bh_in = _bh / _bdx
+                _section.different_first_page_header_footer = True
+                _section.header_distance = Inches(0)
+                _section.top_margin = Inches(_bh_in + 0.04)
+                _section.left_margin  = Inches(0.5)
+                _section.right_margin = Inches(0.5)
+                _fph = _section.first_page_header
+                for _p in _fph.paragraphs: _p.clear()
+                _hp = _fph.paragraphs[0]
+                _hp.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+                _pPr = _hp._p.get_or_add_pPr()
+                _sp = OxmlElement('w:spacing'); _sp.set(qn('w:before'),'0'); _sp.set(qn('w:after'),'220'); _pPr.append(_sp)  # 220 twips ≈ 3.9mm
+                _ind = OxmlElement('w:ind'); _ind.set(qn('w:left'),str(-720)); _ind.set(qn('w:right'),'0'); _ind.set(qn('w:hanging'),'0'); _pPr.append(_ind)
+                _hr = _hp.add_run()
+                _hr.add_picture(_bp, width=Inches(8.27))
+                _nh = _section.header; _nh.is_linked_to_previous = False
+                for _p in _nh.paragraphs: _p.clear()
+            except Exception as _be:
+                print(f"Banner Fehler: {_be}")
     
     # Seitenformat
     section = doc.sections[0]
@@ -1124,223 +1220,145 @@ def render(starterlist, filename):
     section.left_margin = Inches(0.5)
     section.right_margin = Inches(0.5)
     
+    # Header-Variablen
+    show_title     = starterlist.get("showTitle", "") if show_title_opt else ""
+    comp_info      = starterlist.get("informationText", "")
+    comp_number    = starterlist.get("competitionNumber", "")
+    comp_title     = starterlist.get("competitionTitle", "")
+    comp_subtitle  = starterlist.get("subtitle", "")
+    division_number= starterlist.get("divisionNumber")
+
     # LOGO OBEN RECHTS - HINTER DEM TEXT
-    logo_path = starterlist.get("logoPath")
-    if logo_path and os.path.exists(logo_path):
-        try:
-            # Füge Logo in einem Paragraph ein
-            logo_para = doc.add_paragraph()
-            logo_run = logo_para.add_run()
-            inline_shape = logo_run.add_picture(logo_path, width=Inches(1.2))
-            
-            # Konvertiere inline zu anchor (floating image)
-            from docx.oxml.shared import OxmlElement
-            from docx.oxml.ns import qn
-            
-            # Get the inline element
-            inline = inline_shape._inline
-            
-            # Create anchor element
-            anchor = OxmlElement('wp:anchor')
-            
-            # Set anchor attributes for "behind text"
-            anchor.set(qn('distT'), "0")
-            anchor.set(qn('distB'), "0")
-            anchor.set(qn('distL'), "114300")  # 2cm from left edge
-            anchor.set(qn('distR'), "114300")
-            anchor.set(qn('simplePos'), "0")
-            anchor.set(qn('relativeHeight'), "251658240")
-            anchor.set(qn('behindDoc'), "1")  # WICHTIG: Behind text!
-            anchor.set(qn('locked'), "0")
-            anchor.set(qn('layoutInCell'), "1")
-            anchor.set(qn('allowOverlap'), "1")
-            
-            # Simple position
-            simplePos = OxmlElement('wp:simplePos')
-            simplePos.set('x', '0')
-            simplePos.set('y', '0')
-            anchor.append(simplePos)
-            
-            # Horizontal position - right aligned to page
-            positionH = OxmlElement('wp:positionH')
-            positionH.set('relativeFrom', 'page')
-            alignH = OxmlElement('wp:align')
-            alignH.text = 'right'
-            positionH.append(alignH)
-            anchor.append(positionH)
-            
-            # Vertical position - top of page
-            positionV = OxmlElement('wp:positionV')
-            positionV.set('relativeFrom', 'page')
-            posOffsetV = OxmlElement('wp:posOffset')
-            posOffsetV.text = '0'  # 0 EMUs from top
-            positionV.append(posOffsetV)
-            anchor.append(positionV)
-            
-            # Extent (size)
-            extent = OxmlElement('wp:extent')
-            extent.set('cx', str(inline.extent.cx))
-            extent.set('cy', str(inline.extent.cy))
-            anchor.append(extent)
-            
-            # Effective extent
-            effectExtent = OxmlElement('wp:effectExtent')
-            effectExtent.set('l', '0')
-            effectExtent.set('t', '0')
-            effectExtent.set('r', '0')
-            effectExtent.set('b', '0')
-            anchor.append(effectExtent)
-            
-            # Wrap - none (behind text)
-            wrapNone = OxmlElement('wp:wrapNone')
-            anchor.append(wrapNone)
-            
-            # Document properties
-            docPr = OxmlElement('wp:docPr')
-            docPr.set('id', '1')
-            docPr.set('name', 'Logo')
-            anchor.append(docPr)
-            
-            # Non-visual properties
-            cNvGraphicFramePr = OxmlElement('wp:cNvGraphicFramePr')
-            anchor.append(cNvGraphicFramePr)
-            
-            # Copy the graphic data from inline
-            graphic = inline.graphic
-            anchor.append(graphic)
-            
-            # Replace inline with anchor in the XML tree
-            inline.getparent().replace(inline, anchor)
-            
-            # Remove paragraph spacing
-            logo_para.paragraph_format.space_after = Pt(0)
-            logo_para.paragraph_format.space_before = Pt(0)
-            
-            print(f"WORD_INT DEBUG: Logo positioned behind text at top right: {logo_path}")
-        except Exception as e:
-            print(f"WORD_INT DEBUG: Logo error: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    # HEADER - EXAKT wie word_abstammung_logo
-    show_title = starterlist.get("showTitle", "")
-    comp_info = starterlist.get("informationText", "")
-    comp_number = starterlist.get("competitionNumber", "")
-    comp_title = starterlist.get("competitionTitle", "")
-    comp_subtitle = starterlist.get("subtitle", "")  # ← subtitle, nicht competitionSubtitle!
-    division_number = starterlist.get("divisionNumber")
+    if show_header:
+        logo_path = starterlist.get("logoPath")
+        logo_max_width_cm = starterlist.get("logoMaxWidthCm", 5.0)
+        logo_inches = logo_max_width_cm / 2.54
+        page_twips = int(7.27 * 1440)
+        logo_twips = int((logo_inches + 0.1) * 1440)
+        text_twips = page_twips - logo_twips
+
+        if logo_path and os.path.exists(logo_path):
+            h_table = doc.add_table(rows=1, cols=2)
+            h_tbl = h_table._tbl
+            h_tbl_pr = h_tbl.find(qn("w:tblPr"))
+            if h_tbl_pr is None:
+                h_tbl_pr = OxmlElement("w:tblPr"); h_tbl.insert(0, h_tbl_pr)
+            h_borders = OxmlElement("w:tblBorders")
+            for bn in ["top","left","bottom","right","insideH","insideV"]:
+                b = OxmlElement(f"w:{bn}"); b.set(qn("w:val"), "none"); h_borders.append(b)
+            h_tbl_pr.append(h_borders)
+            h_tbl_w = OxmlElement("w:tblW")
+            h_tbl_w.set(qn("w:w"), str(page_twips)); h_tbl_w.set(qn("w:type"), "dxa"); h_tbl_pr.append(h_tbl_w)
+            tbl_grid = OxmlElement("w:tblGrid")
+            for tw in [text_twips, logo_twips]:
+                gc = OxmlElement("w:gridCol"); gc.set(qn("w:w"), str(tw)); tbl_grid.append(gc)
+            h_tbl.insert(list(h_tbl).index(h_tbl_pr) + 1, tbl_grid)
+            left_cell = h_table.rows[0].cells[0]
+            right_cell = h_table.rows[0].cells[1]
+            for cell, tw in zip([left_cell, right_cell], [text_twips, logo_twips]):
+                tc_pr = cell._tc.get_or_add_tcPr()
+                tc_w = OxmlElement("w:tcW"); tc_w.set(qn("w:w"), str(tw)); tc_w.set(qn("w:type"), "dxa"); tc_pr.append(tc_w)
+            first_tracker = [True]
+            def _add_h(cell, text, sz, bold, sa=4):
+                if first_tracker[0]:
+                    p = cell.paragraphs[0]; p.clear(); first_tracker[0] = False
+                else:
+                    p = cell.add_paragraph()
+                r = p.add_run(text); r.font.size = Pt(sz); r.font.bold = bold
+                p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(sa)
+                return p
+            if show_title: _add_h(left_cell, show_title, 14, True, sa=2)
+            if comp_number or comp_title:
+                _cl = f"Competition {comp_number}"
+                if comp_title: _cl += f" — {comp_title}"
+                if division_number:
+                    try:
+                        _dn = int(division_number)
+                        if _dn > 0: _cl += f" - {_dn}. Abt."
+                    except: pass
+                _add_h(left_cell, _cl, 11, True, sa=4)
+            if comp_info: _add_h(left_cell, comp_info.lstrip("\n"), 10, False, sa=4)
+            if comp_subtitle: _add_h(left_cell, comp_subtitle, 10, False, sa=4)
+            # Logo rechts
+            r_para = right_cell.paragraphs[0]
+            r_para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+            r_para.paragraph_format.space_before = Pt(0)
+            r_para.paragraph_format.space_after = Pt(0)
+            r_run = r_para.add_run()
+            r_run.add_picture(logo_path, width=Inches(logo_inches))
+            # behindDoc=1
+            try:
+                import copy as _copy
+                _wp = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                _am = "http://schemas.openxmlformats.org/drawingml/2006/main"
+                inline = r_run._r.find(f"{{{_wp}}}inline")
+                if inline is not None:
+                    anchor = OxmlElement("wp:anchor")
+                    for k,v in [("distT","0"),("distB","0"),("distL","114300"),("distR","114300"),
+                                 ("simplePos","0"),("relativeHeight","251658240"),("behindDoc","1"),
+                                 ("locked","0"),("layoutInCell","1"),("allowOverlap","0")]:
+                        anchor.set(k, v)
+                    sp = OxmlElement("wp:simplePos"); sp.set("x","0"); sp.set("y","0"); anchor.append(sp)
+                    posH = OxmlElement("wp:positionH"); posH.set("relativeFrom","margin")
+                    alignH = OxmlElement("wp:align"); alignH.text = "right"; posH.append(alignH); anchor.append(posH)
+                    posV = OxmlElement("wp:positionV"); posV.set("relativeFrom","margin")
+                    alignV = OxmlElement("wp:align"); alignV.text = "top"; posV.append(alignV); anchor.append(posV)
+                    extent = inline.find(f"{{{_wp}}}extent")
+                    if extent is not None: anchor.append(_copy.deepcopy(extent))
+                    eff = OxmlElement("wp:effectExtent")
+                    for a in ["l","t","r","b"]: eff.set(a,"0")
+                    anchor.append(eff)
+                    anchor.append(OxmlElement("wp:wrapNone"))
+                    docPr = inline.find(f"{{{_wp}}}docPr")
+                    if docPr is not None: anchor.append(_copy.deepcopy(docPr))
+                    anchor.append(OxmlElement("wp:cNvGraphicFramePr"))
+                    a_graphic = inline.find(f"{{{_am}}}graphic")
+                    if a_graphic is None:
+                        for child in inline:
+                            if child.tag.endswith("}graphic"): a_graphic = child; break
+                    if a_graphic is not None: anchor.append(_copy.deepcopy(a_graphic))
+                    drawing = inline.getparent()
+                    if drawing is not None: drawing.replace(inline, anchor)
+            except Exception as _be:
+                print(f"behindDoc Fehler: {_be}")
+        else:
+            def _add_d(text, sz, bold, sa=4):
+                p = doc.add_paragraph()
+                r = p.add_run(text); r.font.size = Pt(sz); r.font.bold = bold
+                p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(sa)
+            if show_title: _add_d(show_title, 14, True, sa=2)
+            if comp_number or comp_title:
+                _cl = f"Competition {comp_number}"
+                if comp_title: _cl += f" — {comp_title}"
+                if division_number:
+                    try:
+                        _dn = int(division_number)
+                        if _dn > 0: _cl += f" - {_dn}. Abt."
+                    except: pass
+                _add_d(_cl, 11, True, sa=4)
+            if comp_info: _add_d(comp_info.lstrip("\n"), 10, False, sa=4)
+            if comp_subtitle: _add_d(comp_subtitle, 10, False, sa=4)
+
+    # Datum/Zeit/Ort für Starterliste-Zeile
     location = starterlist.get("location", "")
-    start_time = starterlist.get("start", "")  # ← start, nicht startTime!
-    
-    # Handle division start times - 3-Szenario Logik (EXAKT aus word_abstammung_logo)
-    start_raw = None
+    start_time = starterlist.get("start", "")
     divisions = starterlist.get('divisions', [])
-    
-    if divisions and division_number is not None:
+    division_number_val = starterlist.get("divisionNumber")
+    start_raw = None
+    if divisions and division_number_val is not None:
         try:
-            div_num = int(division_number)
+            div_num = int(division_number_val)
             for div in divisions:
                 if div.get("number") == div_num:
-                    division_start = div.get("start")
-                    if division_start:
-                        start_raw = division_start
-                        break
-        except (ValueError, TypeError):
-            pass
-    elif divisions and len(divisions) > 0:
-        first_division = divisions[0]
-        division_start = first_division.get("start")
-        if division_start:
-            start_raw = division_start
-    
-    if not start_raw:
-        start_raw = start_time
-    
-    if start_raw:
-        start_time = start_raw
-    
-    # DEBUG: Zeige alle Header-Felder
-    print(f"WORD_INT DEBUG: show_title = '{show_title}'")
-    print(f"WORD_INT DEBUG: comp_info = '{comp_info}'")
-    print(f"WORD_INT DEBUG: comp_number = '{comp_number}'")
-    print(f"WORD_INT DEBUG: comp_title = '{comp_title}'")
-    print(f"WORD_INT DEBUG: comp_subtitle = '{comp_subtitle}'")
-    print(f"WORD_INT DEBUG: division_number = '{division_number}'")
-    print(f"WORD_INT DEBUG: location = '{location}'")
-    print(f"WORD_INT DEBUG: start_time = '{start_time}'")
-    
-    # HEADER - REIHENFOLGE wie pdf_int.py:
-    # 1. show_title (14pt, bold)
-    # 2. Competition X — Title (11pt, bold)  
-    # 3. informationText (10pt, normal - NICHT bold!)
-    # 4. subtitle (10pt, normal)
-    # 5. Datum/Ort (10pt, normal)
-    
-    # 1. Zeile: Show Title (14pt, bold)
-    if show_title:
-        title_para = doc.add_paragraph()
-        title_run = title_para.add_run(show_title)
-        title_run.font.size = Pt(14)
-        title_run.font.bold = True
-        title_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        title_para.paragraph_format.space_after = Pt(2)
-        title_para.paragraph_format.space_before = Pt(0)
-    
-    # 2. Zeile: Competition line (11pt, bold)
-    if comp_number or comp_title:
-        comp_line = f"Competition {comp_number}"
-        if comp_title:
-            comp_line += f" — {comp_title}"
-        if division_number:
-            try:
-                div_num = int(division_number)
-                if div_num > 0:
-                    comp_line += f" - {div_num}. Div."
-            except:
-                pass
-        
-        comp_para = doc.add_paragraph()
-        run = comp_para.add_run(comp_line)
-        run.font.size = Pt(11)
-        run.font.bold = True
-        comp_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        comp_para.paragraph_format.space_before = Pt(0)
-        comp_para.paragraph_format.space_after = Pt(4)
-    
-    # 3. Zeile: informationText (10pt, normal - NICHT bold!)
-    if comp_info:
-        info_para = doc.add_paragraph()
-        run = info_para.add_run(comp_info.lstrip('\n'))
-        run.font.size = Pt(10)
-        run.font.bold = False  # NICHT bold!
-        info_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        info_para.paragraph_format.space_before = Pt(0)
-        info_para.paragraph_format.space_after = Pt(4)
-    
-    # 4. Zeile: Subtitle (10pt, normal)
-    if comp_subtitle:
-        sub_para = doc.add_paragraph()
-        run = sub_para.add_run(comp_subtitle)
-        run.font.size = Pt(10)
-        run.font.bold = False
-        sub_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        sub_para.paragraph_format.space_before = Pt(0)
-        sub_para.paragraph_format.space_after = Pt(4)
-    
-    # 5. Zeile: Date/location (10pt, normal)
-    if start_time:
-        date_text = format_header_datetime(start_time)
-        if location:
-            date_text += f" - {location}"
-        date_para = doc.add_paragraph()
-        run = date_para.add_run(date_text)
-        run.font.size = Pt(10)
-        run.font.bold = False
-        date_para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        date_para.paragraph_format.space_before = Pt(0)
-        date_para.paragraph_format.space_after = Pt(3)  # Minimal spacing to table
-    
-    doc.add_paragraph()
+                    if div.get("start"): start_raw = div.get("start"); break
+        except: pass
+    elif divisions:
+        if divisions[0].get("start"): start_raw = divisions[0].get("start")
+    if start_raw: start_time = start_raw
+
+    date_text_always = format_header_datetime(start_time) if start_time else ""
+    if date_text_always and location:
+        date_text_always += f" - {location}"
     
     # Jury (wie im PDF: kompakte Zeile mit Badges)
     # WICHTIG: Reihenfolge ist IMMER E H C M B (egal wie viele Richter)
@@ -1394,11 +1412,34 @@ def render(starterlist, filename):
                 if i < len(fixed_order) - 1:
                     p_jury.add_run("  ")
     
-    # Starting Order Title
+    # "Starting Order" links + Datum rechtsbündig in einer Zeile
+    _PAGE_TWIPS = int(7.27 * 1440)
     p_title = doc.add_paragraph()
-    run = p_title.add_run("Starting Order")
-    run.font.bold = True
-    run.font.size = Pt(12)
+    _pPr_so = p_title._p.get_or_add_pPr()
+    # Paragraph-Einzug auf 0
+    _ind_so = OxmlElement('w:ind')
+    _ind_so.set(qn('w:left'), '0')
+    _ind_so.set(qn('w:right'), '0')
+    _pPr_so.append(_ind_so)
+    # Tab-Stop rechts
+    _tabs = OxmlElement('w:tabs')
+    _tab  = OxmlElement('w:tab')
+    _tab.set(qn('w:val'), 'right')
+    _tab.set(qn('w:pos'), str(_PAGE_TWIPS))
+    _tabs.append(_tab)
+    _pPr_so.append(_tabs)
+    p_title.paragraph_format.space_before = Pt(2)
+    p_title.paragraph_format.space_after  = Pt(2)
+    p_title.paragraph_format.left_indent  = 0
+    p_title.paragraph_format.right_indent = 0
+    run_so = p_title.add_run("Starting Order")
+    run_so.font.bold = True
+    run_so.font.size = Pt(12)
+    if date_text_always:
+        p_title.add_run("	")
+        run_date = p_title.add_run(date_text_always)
+        run_date.font.bold = True
+        run_date.font.size = Pt(10)
     
     # Haupttabelle
     table = doc.add_table(rows=0, cols=6)
@@ -1460,10 +1501,6 @@ def render(starterlist, filename):
     # ROW COUNTER für korrektes Alternieren (inkl. Breaks!)
     row_counter = 0
     
-    # GRUPPIERUNGSLOGIK (wie in pdf_int.py)
-    current_group = None
-    group_start_time_shown = False
-    
     # FLAGGEN-PFAD: App läuft von C:\Python, Flaggen sind in C:\Python\flags
     def find_flag_path(nat_code):
         r"""Suche Flagge - App läuft von C:\Python aus"""
@@ -1506,7 +1543,7 @@ def render(starterlist, filename):
         break_info = breaks_map[0]
         data_row = table.add_row()
         cells = data_row.cells
-        set_row_height_auto(data_row)
+        set_row_height_auto(data_row, cant_split=True)
         
         # Pause-Text formatieren (wie andere Pausen)
         total_seconds = int(break_info.get("totalSeconds", 0) or 0)
@@ -1516,15 +1553,15 @@ def render(starterlist, filename):
             if total_seconds >= 3600:
                 hours = total_seconds // 3600
                 mins = (total_seconds % 3600) // 60
-                break_text = f"Break ({hours} h {mins:02d} min)"
+                break_text = f"Pause ({hours} h {mins:02d} min)"
             else:
                 mins = total_seconds // 60
-                break_text = f"Break ({mins} min)"
+                break_text = f"Pause ({mins} min)"
             
             if info_text:
                 break_text = f"{break_text} - {info_text}"
         else:
-            break_text = info_text or "Break"
+            break_text = info_text or "Pause"
         
         # Set break text in first cell
         p_break = cells[0].paragraphs[0]
@@ -1551,52 +1588,10 @@ def render(starterlist, filename):
         print(f"✅ Pause vor erstem Starter eingefügt (weiß): '{break_text}'")
     
     for idx, starter in enumerate(starters):
-        # Prüfe auf Gruppenwechsel (Division) BEVOR der Starter hinzugefügt wird
-        starter_group = starter.get("groupNumber")
-        
-        # Nur wenn groupNumber existiert und > 0
-        if starter_group is not None and starter_group > 0 and starter_group != current_group:
-            # Neue Gruppe erkannt - Gruppen-Header hinzufügen
-            group_text = f"Division {starter_group}"
-            
-            # Füge Division-Header-Zeile ein
-            group_row = table.add_row()
-            group_cells = group_row.cells
-            set_row_height_auto(group_row)
-            
-            # Divisionstext in erste Zelle
-            p_group = group_cells[0].paragraphs[0]
-            p_group.clear()
-            run = p_group.add_run(group_text)
-            run.font.name = 'Arial'
-            run.font.bold = True
-            run.font.size = Pt(10)
-            run.font.color.rgb = RGBColor(255, 255, 255)  # Weiß
-            p_group.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-            optimize_paragraph_spacing(p_group)
-            
-            # Andere Zellen leeren und mergen (6 Spalten)
-            for i in range(1, 6):
-                group_cells[i].paragraphs[0].clear()
-            
-            # Merge alle Zellen
-            cell_0 = group_cells[0]
-            for i in range(1, 6):
-                cell_0.merge(group_cells[i])
-            
-            # Dunkelgrauer Hintergrund (wie Header)
-            set_dark_header_background(group_row)
-            
-            # Update Gruppenvariablen
-            current_group = starter_group
-            group_start_time_shown = False  # Reset für neue Gruppe
-            
-            # row_counter NICHT erhöhen für Division-Header!
-        
         data_row = table.add_row()
         cells = data_row.cells
         
-        set_row_height_auto(data_row)
+        set_row_height_auto(data_row, cant_split=True)
         
         # Check if withdrawn FIRST!
         is_withdrawn = starter.get("withdrawn", False)
@@ -1635,15 +1630,8 @@ def render(starterlist, filename):
         optimize_paragraph_spacing(p0)
         
         # Column 1: Time MIT SEKUNDEN (durchgestrichen wenn withdrawn)
-        # Zeit nur beim ersten Starter pro Gruppe zeigen, oder wenn keine Gruppierung
-        if starter_group is None or starter_group == 0 or not group_start_time_shown:
-            start_time = safe_get(starter, "startTime", "")
-            formatted_time = format_time(start_time)
-            if starter_group is not None and starter_group > 0:
-                group_start_time_shown = True  # Markiere Zeit als gezeigt
-        else:
-            formatted_time = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
-        
+        start_time = safe_get(starter, "startTime", "")
+        formatted_time = format_time(start_time)
         p1 = cells[1].paragraphs[0]
         p1.clear()
         run = p1.add_run(formatted_time)
@@ -1786,60 +1774,42 @@ def render(starterlist, filename):
         # Column 4: Athlete (LINKSBÜNDIG!) - NEUE POSITION!
         athlete = starter.get("athlete", {})
         athlete_name = athlete.get("name", "") if athlete else ""
-        club = athlete.get("club", "") if athlete else ""
-        nationality = athlete.get("nation", "") if athlete else ""
         
         p4 = cells[4].paragraphs[0]
         p4.clear()
         p4.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT  # LINKSBÜNDIG!
         
-        # Reiter-Name (fett)
+        club = athlete.get("club", "") if athlete else ""
+        nationality = athlete.get("nation", "") if athlete else ""
+        club_or_country = ""
+        if nationality and nationality.upper() != "GER":
+            if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
+                club_or_country = get_country_name_english(nationality)
+            else:
+                club_or_country = club
+        elif club:
+            club_or_country = club
+
         if athlete_name:
             run = p4.add_run(athlete_name)
             run.font.name = 'Arial'
-            run.font.size = Pt(9)  # 9pt fett
+            run.font.size = Pt(9)
             run.font.bold = True
             if is_withdrawn:
                 run.font.strike = True
-        
-        # Verein/Land-Logik (wie im PDF-Template, aber Englisch)
-        # New logic: Show country for foreigners only if club is empty OR "Gastlizenz GER"
-        if nationality and nationality.upper() != "GER":
-            # Foreigner
-            if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
-                # No club or guest license → Show country name
-                country_full = get_country_name_english(nationality)
-                if country_full:
-                    p4.add_run("\n")
-                    run = p4.add_run(country_full)
-                    run.font.name = 'Arial'
-                    run.font.size = Pt(7)  # 7pt für Club/Land
-                    run.font.bold = False
-                    if is_withdrawn:
-                        run.font.strike = True
-            else:
-                # Has a club (not guest license) → Show club
-                p4.add_run("\n")
-                run = p4.add_run(club)
-                run.font.name = 'Arial'
-                run.font.size = Pt(7)  # 7pt für Club/Land
-                run.font.bold = False
-                if is_withdrawn:
-                    run.font.strike = True
-        elif club:
-            # German: Show club
+        if club_or_country:
             p4.add_run("\n")
-            run = p4.add_run(club)
-            run.font.name = 'Arial'
-            run.font.size = Pt(7)  # 7pt für Club/Land
-            run.font.bold = False
+            run_club = p4.add_run(club_or_country)
+            run_club.font.name = 'Arial'
+            run_club.font.size = Pt(7)
+            run_club.font.bold = False
             if is_withdrawn:
-                run.font.strike = True
-        
+                run_club.font.strike = True
+
         optimize_paragraph_spacing(p4)
         
         # Column 5: Nat. mit echten Flaggen-Icons - NEUE POSITION!
-        # nationality wurde bereits oben bei Column 4 deklariert
+        nationality = athlete.get("nation", "") if athlete else ""
         nat_code = get_nationality_code(nationality) if nationality else ""
         
         p5 = cells[5].paragraphs[0]
@@ -1908,15 +1878,15 @@ def render(starterlist, filename):
                     if total_seconds >= 3600:
                         hours = total_seconds // 3600
                         mins = (total_seconds % 3600) // 60
-                        break_text = f"Break ({hours} h {mins:02d} min)"
+                        break_text = f"Pause ({hours} h {mins:02d} min)"
                     else:
                         mins = total_seconds // 60
-                        break_text = f"Break ({mins} min)"
+                        break_text = f"Pause ({mins} min)"
                     
                     if info_text:
                         break_text = f"{break_text} - {info_text}"
                 else:
-                    break_text = info_text or "Break"
+                    break_text = info_text or "Pause"
                 
                 print(f"   Break Text: {break_text}, Gray: {break_is_gray}")
                 
@@ -1959,7 +1929,20 @@ def render(starterlist, filename):
         try:
             # Footer für alle Sections setzen
             for section in doc.sections:
-                footer = section.footer
+                footer = _section.footer
+                # Bei Banner auch first_page_footer mit Sponsorenleiste
+                if show_banner and _section.different_first_page_header_footer:
+                    try:
+                        _fpf = _section.first_page_footer
+                        _fpfp = _fpf.paragraphs[0] if _fpf.paragraphs else _fpf.add_paragraph()
+                        _fpfp.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                        _fpfp.clear()
+                        _fpfr = _fpfp.add_run()
+                        _fpfr.add_picture(sponsor_logo_path, width=Inches(7.5))
+                        _fpfp.paragraph_format.space_after = Pt(0)
+                        _fpfp.paragraph_format.space_before = Pt(0)
+                    except: pass
+
                 
                 # Footer-Paragraph zentriert
                 footer_para = footer.paragraphs[0]

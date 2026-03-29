@@ -997,11 +997,24 @@ with tab2:
                                 word_filename = f"{comp_formatted}{div_formatted}_start_{timestamp}.docx"
                                 word_path = str(OUTPUT_DIR / word_filename)
                                 
+                                word_print_options = {
+                                    "sponsor_top":        st.session_state.get("sponsor_top", False),
+                                    "sponsor_bottom":     st.session_state.get("sponsor_bottom", False),
+                                    "single_sided":       st.session_state.get("single_sided", False),
+                                    "show_banner":        st.session_state.get("show_banner", True),
+                                    "show_sponsor_bar":   st.session_state.get("show_sponsor_bar", True),
+                                    "show_title":         st.session_state.get("show_title", True),
+                                    "show_header":        st.session_state.get("show_header", True),
+                                    "spacing_top_cm":     st.session_state.get("spacing_top_cm", 3.0),
+                                    "spacing_bottom_cm":  st.session_state.get("spacing_bottom_cm", 2.0),
+                                }
                                 word_path = create_word(
                                     starterlist,
                                     st.session_state.word_template,
                                     word_path,
-                                    logos_enabled=True
+                                    logos_enabled=True,
+                                    print_options=word_print_options,
+                                    logo_max_width_cm=st.session_state.get("logo_max_width_cm", 5.0)
                                 )
                                 
                                 if not word_path or not os.path.exists(word_path):

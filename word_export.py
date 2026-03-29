@@ -62,7 +62,7 @@ def determine_logo_path(starterlist):
         print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
         return "logos/logo.png" if os.path.exists("logos/logo.png") else None
 
-def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True) -> str:
+def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0) -> str:
     """
     Erstellt ein Word-Dokument basierend auf der Starterliste und dem gewählten Template
     
@@ -85,7 +85,32 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
     # Logo-Pfad in starterlist einfügen für Template-Zugriff
     starterlist_with_logo = starterlist.copy()
     starterlist_with_logo["logoPath"] = logo_path
-    
+    starterlist_with_logo["logoMaxWidthCm"] = logo_max_width_cm
+
+    # Spacing-Werte aus print_options extrahieren und direkt in starterlist eintragen
+    if print_options:
+        starterlist_with_logo["spacingTopCm"]    = print_options.get("spacing_top_cm",    3.0)
+        starterlist_with_logo["spacingBottomCm"] = print_options.get("spacing_bottom_cm", 2.0)
+    else:
+        starterlist_with_logo["spacingTopCm"]    = 3.0
+        starterlist_with_logo["spacingBottomCm"] = 2.0
+
+    # Druckoptionen hinzufügen (immer, damit Templates darauf zugreifen können)
+    if print_options:
+        starterlist_with_logo["printOptions"] = print_options
+        print(f"WORD EXPORT DEBUG: print_options hinzugefügt: {print_options}")
+    else:
+        # Sichere Defaults damit Templates keinen KeyError bekommen
+        starterlist_with_logo["printOptions"] = {
+            "sponsor_top":      False,
+            "sponsor_bottom":   False,
+            "single_sided":     False,
+            "show_banner":      True,
+            "show_sponsor_bar": True,
+            "show_title":       True,
+            "show_header":      True,
+        }
+
     print(f"WORD EXPORT DEBUG: logoPath gesetzt auf: {logo_path}")
     
     # Template-Mapping erweitert um Logo-Varianten UND Stream-Templates
