@@ -899,6 +899,105 @@ with tab2:
                             st.info(f"... und {total_count - preview_count} weitere Starter")
                 
                 # ============================================================
+                # TEMPLATE-SPEZIFISCHE EINGABEN (Derby / Pferdewechsel)
+                # ============================================================
+                selected_tpl = st.session_state.pdf_template
+
+                is_derby        = selected_tpl in ("pdf_dre_derby_cloud", "pdf_dre_derby_int_cloud")
+                is_pfwechsel    = selected_tpl in ("pdf_dre_pferdewechsel_cloud", "pdf_dre_pferdewechsel_int_cloud")
+
+                if is_derby:
+                    st.markdown('<div class="section-header">🏇 Derby – Zeiten</div>', unsafe_allow_html=True)
+                    col_d1, col_d2 = st.columns(2)
+                    with col_d1:
+                        derby_begin = st.text_input(
+                            "Prüfungsbeginn (z.B. 10:00 Uhr)",
+                            value=st.session_state.get("derby_begin", ""),
+                            key="derby_begin_input"
+                        )
+                        st.session_state.derby_begin = derby_begin
+                    with col_d2:
+                        derby_final = st.text_input(
+                            "Finale (z.B. 11:30 Uhr)",
+                            value=st.session_state.get("derby_final", ""),
+                            key="derby_final_input"
+                        )
+                        st.session_state.derby_final = derby_final
+
+                if is_pfwechsel:
+                    st.markdown('<div class="section-header">🐴 Pferdewechsel – Konfiguration</div>', unsafe_allow_html=True)
+
+                    # Richtverfahren aus Starterliste ermitteln
+                    comp_data    = starterlist.get("competition") or {}
+                    judging_rule = comp_data.get("judgingRule") or starterlist.get("judgingRule") or ""
+
+                    # Die ersten 3 Starter für Namen
+                    pw_starters  = starterlist.get("starters") or []
+                    pw_entries   = []
+                    for s in pw_starters[:3]:
+                        ath   = s.get("athlete") or {}
+                        hrs   = s.get("horses")  or []
+                        rname = ath.get("name",  f"Reiter {s.get('startNumber','?')}")
+                        pname = hrs[0].get("name", f"Pferd {s.get('startNumber','?')}") if hrs else "—"
+                        pw_entries.append((rname, pname))
+
+                    reiter_namen = [e[0] for e in pw_entries]
+                    pferd_namen  = [e[1] for e in pw_entries]
+
+                    # Frage 1: Ergebnis auf eigenem Pferd eintragen?
+                    own_horse_ja = st.radio(
+                        "Ergebnis auf eigenem Pferd eintragen?",
+                        ["Nein", "Ja"],
+                        horizontal=True,
+                        key="pw_own_horse"
+                    ) == "Ja"
+
+                    own_results  = {}
+                    assignment   = list(zip(reiter_namen, pferd_namen))  # Standard-Diagonale
+
+                    if own_horse_ja and len(pw_entries) == 3:
+                        st.markdown("**Zuordnung: Welches ist das eigene Pferd?**")
+                        new_assignment = []
+                        for i, rname in enumerate(reiter_namen):
+                            chosen = st.radio(
+                                rname,
+                                pferd_namen,
+                                index=i,
+                                horizontal=True,
+                                key=f"pw_assign_{i}"
+                            )
+                            new_assignment.append((rname, chosen))
+                        assignment = new_assignment
+
+                        st.markdown("**Ergebnis auf eigenem Pferd:**")
+                        rule_up = str(judging_rule).upper().replace(" ","").replace(".","").replace(",","")
+                        unit    = "" if "402A" in rule_up else " %"
+                        for i, (rname, pname) in enumerate(assignment):
+                            val = st.text_input(
+                                f"{rname} auf {pname}{unit}",
+                                value=st.session_state.get(f"pw_score_{i}", ""),
+                                key=f"pw_score_input_{i}"
+                            )
+                            st.session_state[f"pw_score_{i}"] = val
+                            if val.strip():
+                                own_results[i] = val.strip().replace(",", ".")
+
+                    # Pferdedetails ab Starter 4?
+                    show_details = st.radio(
+                        "Pferdedetails ab Starter 4 anzeigen?",
+                        ["Nein – nur Pferdename", "Ja – vollständige Details"],
+                        horizontal=True,
+                        key="pw_show_details"
+                    ) == "Ja – vollständige Details"
+
+                    # Konfiguration in session_state speichern
+                    st.session_state.pw_config = {
+                        "own_results":              own_results,
+                        "assignment":               assignment,
+                        "show_horse_details_from_4": show_details,
+                    }
+
+                # ============================================================
                 # PDF EXPORT
                 # ============================================================
                 
@@ -935,6 +1034,16 @@ with tab2:
                                         "show_title":       st.session_state.get("show_title", True),
                                         "show_header":      st.session_state.get("show_header", True),
                                     }
+
+                                    # Template-spezifische Konfigurationen eintragen
+                                    selected_tpl = st.session_state.pdf_template
+                                    if selected_tpl in ("pdf_dre_derby_cloud", "pdf_dre_derby_int_cloud"):
+                                        starterlist["derby_config"] = {
+                                            "begin_time": st.session_state.get("derby_begin", ""),
+                                            "final_time": st.session_state.get("derby_final", ""),
+                                        }
+                                    if selected_tpl in ("pdf_dre_pferdewechsel_cloud", "pdf_dre_pferdewechsel_int_cloud"):
+                                        starterlist["derby_config"] = st.session_state.get("pw_config", {})
 
                                     pdf_path = create_pdf(
                                         starterlist,
