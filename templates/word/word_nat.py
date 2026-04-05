@@ -1888,7 +1888,7 @@ def render(starterlist, filename):
         if nationality and nationality.upper() != "GER":
             # Ausländer: Land wenn kein Verein oder Gastlizenz GER
             if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
-                club_or_country = get_country_name(nationality)
+                club_or_country = get_country_name_german(nationality)
             else:
                 club_or_country = club
         elif club:
