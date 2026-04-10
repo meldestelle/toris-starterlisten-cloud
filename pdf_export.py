@@ -51,6 +51,18 @@ def _find_template_file(template_name: str) -> str:
         f"Template {template_name} nicht gefunden in {TEMPLATES_DIR}. Verfügbare: {candidates}"
     )
 
+def _find_logo_file(logo_dir: str, basename: str) -> str:
+    """
+    Sucht nach einer Logo-Datei mit dem angegebenen Basisnamen (ohne Endung)
+    in verschiedenen Bildformaten (.png, .jpg, .jpeg).
+    Gibt den vollständigen Pfad zurück oder None wenn nicht gefunden.
+    """
+    for ext in [".png", ".jpg", ".jpeg"]:
+        path = os.path.join(logo_dir, basename + ext)
+        if os.path.exists(path):
+            return path
+    return None
+
 def _get_competition_logo_path(starterlist: dict) -> str:
     """
     Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema
@@ -61,9 +73,9 @@ def _get_competition_logo_path(starterlist: dict) -> str:
     div_number = starterlist.get("divisionNumber")
     
     if not comp_number:
-        # Fallback auf Standard-Logo prüfen
-        fallback_path = os.path.join("logos", "logo.png")
-        if os.path.exists(fallback_path):
+        # Fallback auf Standard-Logo prüfen (.png / .jpg / .jpeg)
+        fallback_path = _find_logo_file("logos", "logo")
+        if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
         else:
@@ -85,20 +97,20 @@ def _get_competition_logo_path(starterlist: dict) -> str:
     else:
         div_formatted = "0"
     
-    # Logo-Dateiname nach XXY-Schema
-    logo_filename = f"{comp_formatted}{div_formatted}.png"
-    logo_path = os.path.join("logos", logo_filename)
-    
-    print(f"PDF DEBUG: Suche Logo: {logo_path}")
-    
+    # Logo-Dateiname nach XXY-Schema (.png / .jpg / .jpeg)
+    logo_basename = f"{comp_formatted}{div_formatted}"
+    logo_path = _find_logo_file("logos", logo_basename)
+
+    print(f"PDF DEBUG: Suche Logo: logos/{logo_basename}.*")
+
     # Prüfen ob spezifisches Logo existiert
-    if os.path.exists(logo_path):
+    if logo_path:
         print(f"PDF DEBUG: Prüfungsspezifisches Logo gefunden: {logo_path}")
         return logo_path
     else:
-        # Fallback auf Standard-Logo
-        fallback_path = os.path.join("logos", "logo.png")
-        if os.path.exists(fallback_path):
+        # Fallback auf Standard-Logo (.png / .jpg / .jpeg)
+        fallback_path = _find_logo_file("logos", "logo")
+        if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
         else:
