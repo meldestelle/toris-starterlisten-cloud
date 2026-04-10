@@ -402,12 +402,22 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         col_sturz, col_sturz, col_aufg
     ]
 
+    # Spaltenüberschrift dynamisch: R-Nr. wenn backNumber vorhanden, K-Nr. wenn cno, sonst Nr.
+    has_back_nr = any(s.get("backNumber") is not None for s in starters)
+    has_cno     = any((s.get("horses") or [{}])[0].get("cno") for s in starters) if not has_back_nr else False
+    if has_back_nr:
+        col1_label = "<b>R-Nr.</b>"
+    elif has_cno:
+        col1_label = "<b>K-Nr.</b>"
+    else:
+        col1_label = "<b>Nr.</b>"
+
     # Kopfzeile
     def hdr_p(txt):
         return Paragraph(txt, style_hdr)
 
     header_row = [
-        hdr_p("<b>R-Nr.</b>"),
+        hdr_p(col1_label),
         Paragraph("<b>Reiter / Rider</b><br/><font size=6>Pferd / Horse</font>", style_hdr_l),
         hdr_p("<b>fehler-\nfrei</b>"),
         hdr_p("<b>1.\nVerwei-\ngerung</b>"),
@@ -442,11 +452,6 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             meta.append({"type": "group"})
             current_group = starter_group
 
-        # R-Nr. = backNumber, Fallback startNumber
-        back_nr     = s.get("backNumber")
-        start_nr    = s.get("startNumber") or ""
-        rnr_display = str(back_nr) if back_nr is not None else str(start_nr)
-
         withdrawn     = bool(s.get("withdrawn",    False))
         hors_concours = bool(s.get("horsConcours", False))
 
@@ -457,6 +462,17 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         horses     = s.get("horses") or []
         horse      = horses[0] if horses else {}
         horse_name = horse.get("name", "")
+
+        # Nummer: backNumber → cno (Kopfnummer) → startNumber
+        back_nr  = s.get("backNumber")
+        start_nr = s.get("startNumber") or ""
+        cno_val  = horse.get("cno", "") if horse else ""
+        if back_nr is not None:
+            rnr_display = str(back_nr)
+        elif cno_val:
+            rnr_display = str(cno_val)
+        else:
+            rnr_display = str(start_nr)
 
         reiter_line = f"<b>{rider_name}</b>"
         if horse_name:
