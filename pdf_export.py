@@ -329,6 +329,7 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
         module.render(enhanced_starterlist, output_path, logo_max_width_cm=logo_max_width_cm)
         print(f"PDF DEBUG: Template mit logo_max_width_cm={logo_max_width_cm}cm aufgerufen")
     except TypeError:
-        # Fallback für alte Templates ohne logo_max_width_cm Parameter
         module.render(enhanced_starterlist, output_path)
         print(f"PDF DEBUG: Template ohne logo_max_width_cm Parameter (alte Version)")
+
+    return output_path
