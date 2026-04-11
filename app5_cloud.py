@@ -245,6 +245,70 @@ def get_user_logos_dir():
         return user_dir
     return LOGOS_DIR
 
+def _github_api_headers():
+    token = st.secrets.get("GITHUB_TOKEN", "")
+    return {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
+def _github_repo():
+    return st.secrets.get("GITHUB_REPO", "meldestelle/toris-starterlisten-cloud")
+
+def _github_logo_path(logo_name):
+    """Gibt den Repo-Pfad für ein Logo zurück (z.B. logos/tom/logo.png)"""
+    username = st.session_state.get("username", "Standard")
+    if username and username.strip() and username.strip().lower() != "standard":
+        return f"logos/{username.strip()}/{logo_name}"
+    return f"logos/{logo_name}"
+
+def github_upload_logo(logo_name: str, file_bytes: bytes) -> bool:
+    """Lädt ein Logo via GitHub API ins Repository hoch"""
+    import base64
+    repo = _github_repo()
+    path = _github_logo_path(logo_name)
+    url  = f"https://api.github.com/repos/{repo}/contents/{path}"
+
+    # Prüfe ob Datei schon existiert (für Update SHA benötigt)
+    sha = None
+    r = requests.get(url, headers=_github_api_headers())
+    if r.status_code == 200:
+        sha = r.json().get("sha")
+
+    payload = {
+        "message": f"Logo upload: {path}",
+        "content": base64.b64encode(file_bytes).decode(),
+    }
+    if sha:
+        payload["sha"] = sha
+
+    r = requests.put(url, headers=_github_api_headers(), json=payload)
+    if r.status_code in (200, 201):
+        print(f"GITHUB: Logo hochgeladen: {path}")
+        return True
+    else:
+        print(f"GITHUB ERROR: Upload fehlgeschlagen: {r.status_code} {r.text}")
+        return False
+
+def github_delete_logo(logo_name: str) -> bool:
+    """Löscht ein Logo via GitHub API aus dem Repository"""
+    repo = _github_repo()
+    path = _github_logo_path(logo_name)
+    url  = f"https://api.github.com/repos/{repo}/contents/{path}"
+
+    # SHA ermitteln
+    r = requests.get(url, headers=_github_api_headers())
+    if r.status_code != 200:
+        print(f"GITHUB ERROR: Datei nicht gefunden: {path}")
+        return False
+    sha = r.json().get("sha")
+
+    payload = {"message": f"Logo delete: {path}", "sha": sha}
+    r = requests.delete(url, headers=_github_api_headers(), json=payload)
+    if r.status_code == 200:
+        print(f"GITHUB: Logo gelöscht: {path}")
+        return True
+    else:
+        print(f"GITHUB ERROR: Löschen fehlgeschlagen: {r.status_code} {r.text}")
+        return False
+
 def get_available_logos():
     logos = []
     logos_dir = get_user_logos_dir()
@@ -253,6 +317,15 @@ def get_available_logos():
             if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
                 logos.append(f.name)
     return sorted(logos)
+
+def delete_logo(logo_name):
+    """Löscht Logo lokal UND im GitHub-Repository"""
+    # Lokal löschen
+    logo_path = get_user_logos_dir() / logo_name
+    if logo_path.exists():
+        logo_path.unlink()
+    # GitHub löschen
+    return github_delete_logo(logo_name)
 
 def delete_template(template_name):
     template_path = TEMPLATES_DIR / f"{template_name}.py"
@@ -396,8 +469,14 @@ def render_file_manager():
             
             if st.button("✅ Logo speichern", key="save_logo"):
                 try:
+                    file_bytes = uploaded_logo.getbuffer().tobytes()
+                    # Lokal speichern
                     save_uploaded_file(uploaded_logo, get_user_logos_dir())
-                    st.success(f"✅ Logo '{uploaded_logo.name}' gespeichert!")
+                    # GitHub speichern
+                    if github_upload_logo(uploaded_logo.name, file_bytes):
+                        st.success(f"✅ Logo '{uploaded_logo.name}' gespeichert und ins Repository übertragen!")
+                    else:
+                        st.warning(f"⚠️ Logo lokal gespeichert, aber GitHub-Upload fehlgeschlagen. Bitte Token prüfen.")
                     # Clear uploader
                     if "logo_upload_key" not in st.session_state:
                         st.session_state.logo_upload_key = 0
@@ -420,6 +499,8 @@ def render_file_manager():
                             if delete_logo(logo):
                                 st.success(f"Logo '{logo}' gelöscht")
                                 st.rerun()
+                            else:
+                                st.error(f"Logo '{logo}' lokal gelöscht, GitHub-Löschen fehlgeschlagen")
                     except Exception as e:
                         st.error(f"Fehler: {e}")
         else:
