@@ -128,7 +128,7 @@ def _get_banner_sponsor_paths(username: str = None) -> dict:
             print("PDF DEBUG: Kein Logo gefunden, ohne Logo fortfahren")
             return None
 
-def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, print_options: dict = None):
+def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, print_options: dict = None, output_dir: str = None, username: str = None):
     """
     Lädt das angegebene Template-Modul aus templates/pdf und ruft dessen render(starterlist, filename) auf.
     Alle Dateien werden im 'Ausgabe'-Ordner erstellt.
@@ -143,14 +143,16 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
         sponsor_top, sponsor_bottom, single_sided, show_banner, show_sponsor_bar, show_title
     """
     # Ausgabe-Ordner sicherstellen
-    _ensure_output_dir()
-    
+    target_dir = output_dir if output_dir else OUTPUT_DIR
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+
     # Vollständigen Pfad für Ausgabedatei erstellen
-    output_path = os.path.join(OUTPUT_DIR, filename)
-    
+    output_path = os.path.join(target_dir, filename)
+
     # Prüfungsspezifisches Logo ermitteln
-    logo_path = _get_competition_logo_path(starterlist)
-    
+    logo_path = _get_competition_logo_path(starterlist, username=username)
+
     # Starterlist um Logo-Information erweitern (nur wenn Logo vorhanden)
     enhanced_starterlist = starterlist.copy()
     if logo_path:
@@ -158,24 +160,20 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
         print(f"PDF DEBUG: Logo-Pfad hinzugefügt: {logo_path}")
     else:
         print("PDF DEBUG: Kein Logo verfügbar, ohne Logo fortfahren")
-    
-    # Banner und Sponsorenleiste Pfade ermitteln und in print_options stecken
-    banner_sponsor = _get_banner_sponsor_paths()
+
+    # Banner und Sponsorenleiste Pfade ermitteln
+    banner_sponsor = _get_banner_sponsor_paths(username=username)
     enhanced_starterlist.update(banner_sponsor)
-    # Auch in printOptions damit FooterCanvas sie findet
-    enhanced_starterlist["printOptions"]["bannerPath"]  = banner_sponsor.get("bannerPath",  os.path.join("logos", "banner.png"))
-    enhanced_starterlist["printOptions"]["sponsorPath"] = banner_sponsor.get("sponsorPath", os.path.join("logos", "sponsorenleiste.png"))
     enhanced_starterlist["spacingTopCm"] = spacing_top_cm
     enhanced_starterlist["spacingBottomCm"] = spacing_bottom_cm
     if spacing_top_cm > 0 or spacing_bottom_cm > 0:
         print(f"PDF DEBUG: Abstände: Oben={spacing_top_cm}cm, Unten={spacing_bottom_cm}cm")
-    
+
     # Druckoptionen in starterlist einfügen
     if print_options:
         enhanced_starterlist["printOptions"] = print_options
         print(f"PDF DEBUG: Druckoptionen: {print_options}")
     else:
-        # Defaults: alles an, doppelseitig, kein Sponsorenpapier
         enhanced_starterlist["printOptions"] = {
             "sponsor_top": False,
             "sponsor_bottom": False,
@@ -185,6 +183,10 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
             "show_title": True,
             "show_header": True,
         }
+
+    # Banner/Sponsor Pfade in printOptions eintragen (nach printOptions-Block!)
+    enhanced_starterlist["printOptions"]["bannerPath"]  = banner_sponsor.get("bannerPath",  "")
+    enhanced_starterlist["printOptions"]["sponsorPath"] = banner_sponsor.get("sponsorPath", "")
     
     try:
         template_file = _find_template_file(template_name)
