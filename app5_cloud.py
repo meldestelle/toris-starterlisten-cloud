@@ -470,28 +470,18 @@ def render_file_manager():
             if st.button("✅ Logo speichern", key="save_logo"):
                 try:
                     file_bytes = uploaded_logo.getbuffer().tobytes()
-                    # Debug: Token und Pfad anzeigen
-                    token = st.secrets.get("GITHUB_TOKEN", "")
-                    repo  = st.secrets.get("GITHUB_REPO", "")
-                    path  = _github_logo_path(uploaded_logo.name)
-                    st.info(f"🔍 Debug: repo={repo}, path={path}, token={'✅ vorhanden' if token else '❌ FEHLT'}")
                     # Lokal speichern
                     save_uploaded_file(uploaded_logo, get_user_logos_dir())
                     # GitHub speichern
-                    import base64
-                    url = f"https://api.github.com/repos/{repo}/contents/{path}"
-                    sha = None
-                    r = requests.get(url, headers=_github_api_headers())
-                    if r.status_code == 200:
-                        sha = r.json().get("sha")
-                    payload = {"message": f"Logo upload: {path}", "content": base64.b64encode(file_bytes).decode()}
-                    if sha:
-                        payload["sha"] = sha
-                    r = requests.put(url, headers=_github_api_headers(), json=payload)
-                    if r.status_code in (200, 201):
+                    if github_upload_logo(uploaded_logo.name, file_bytes):
                         st.success(f"✅ Logo '{uploaded_logo.name}' gespeichert und ins Repository übertragen!")
                     else:
-                        st.error(f"❌ GitHub-Upload fehlgeschlagen: {r.status_code} - {r.json().get('message', r.text)}")
+                        st.warning(f"⚠️ Logo lokal gespeichert, aber GitHub-Upload fehlgeschlagen. Bitte Token prüfen.")
+                    # Clear uploader
+                    if "logo_upload_key" not in st.session_state:
+                        st.session_state.logo_upload_key = 0
+                    st.session_state.logo_upload_key += 1
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Fehler beim Speichern: {e}")
         
