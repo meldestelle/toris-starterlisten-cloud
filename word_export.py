@@ -78,6 +78,55 @@ def _get_banner_sponsor_paths(username: str = None) -> dict:
         print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
         return _find_logo_file("logos", "logo")
 
+def determine_logo_path(starterlist, username: str = None):
+    """
+    Bestimmt den Logo-Pfad basierend auf XXY-Schema.
+    Sucht zuerst im User-Unterordner, dann im gemeinsamen logos/ Ordner.
+    """
+    try:
+        if username and username.strip() and username.strip().lower() != "standard":
+            logo_dir = os.path.join("logos", username.strip())
+        else:
+            logo_dir = "logos"
+
+        comp_number = starterlist.get("competitionNumber")
+        if not comp_number:
+            return _find_logo_file(logo_dir, "logo")
+
+        try:
+            comp_num_int = int(comp_number)
+        except (ValueError, TypeError):
+            return _find_logo_file(logo_dir, "logo")
+
+        division_num = 0
+        division_number = starterlist.get("divisionNumber")
+        if division_number:
+            try:
+                division_num = int(division_number)
+            except (ValueError, TypeError):
+                division_num = 0
+
+        xxy_code = f"{comp_num_int:02d}{division_num}"
+        specific_logo = _find_logo_file(logo_dir, xxy_code)
+
+        print(f"WORD EXPORT DEBUG: Suche Logo: {logo_dir}/{xxy_code}.*")
+
+        if specific_logo:
+            print(f"WORD EXPORT DEBUG: Spezifisches Logo gefunden: {specific_logo}")
+            return specific_logo
+
+        fallback = _find_logo_file(logo_dir, "logo")
+        if fallback:
+            print(f"WORD EXPORT DEBUG: Standard-Logo verwendet: {fallback}")
+            return fallback
+
+        print("WORD EXPORT DEBUG: Kein Logo gefunden")
+        return None
+
+    except Exception as e:
+        print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
+        return _find_logo_file("logos", "logo")
+
 def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0, username: str = None) -> str:
     """
     Erstellt ein Word-Dokument basierend auf der Starterliste und dem gewählten Template
@@ -96,7 +145,7 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
     # Logo-Pfad bestimmen und in starterlist einfügen
     logo_path = None
     if logos_enabled:
-        logo_path = determine_logo_path(starterlist)
+        logo_path = determine_logo_path(starterlist, username=username)
         
     # Logo-Pfad in starterlist einfügen für Template-Zugriff
     starterlist_with_logo = starterlist.copy()
