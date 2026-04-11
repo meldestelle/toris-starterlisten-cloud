@@ -492,11 +492,6 @@ def render_file_manager():
                         st.success(f"✅ Logo '{uploaded_logo.name}' gespeichert und ins Repository übertragen!")
                     else:
                         st.error(f"❌ GitHub-Upload fehlgeschlagen: {r.status_code} - {r.json().get('message', r.text)}")
-                    # Clear uploader
-                    if "logo_upload_key" not in st.session_state:
-                        st.session_state.logo_upload_key = 0
-                    st.session_state.logo_upload_key += 1
-                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Fehler beim Speichern: {e}")
         
