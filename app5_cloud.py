@@ -342,13 +342,6 @@ def delete_word_template(template_name):
         return True
     return False
 
-def delete_logo(logo_name):
-    logo_path = get_user_logos_dir() / logo_name
-    if logo_path.exists():
-        logo_path.unlink()
-        return True
-    return False
-
 def save_uploaded_file(uploaded_file, target_dir):
     target_path = target_dir / uploaded_file.name
     with open(target_path, "wb") as f:
