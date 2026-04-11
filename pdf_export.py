@@ -8,9 +8,7 @@
 #
 import os
 import importlib.util
-from PIL import Image as PILImage
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
+import shutil
 
 TEMPLATES_DIR = os.path.join("templates", "pdf")
 OUTPUT_DIR = "Ausgabe"  # Einheitlicher Ausgabeordner
@@ -255,81 +253,37 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
     if not hasattr(module, "render"):
         raise AttributeError(f"Template {template_file} hat keine Funktion render(starterlist, filename)")
 
-    # FooterCanvas patchen: banner/sponsorenleiste aus User-Verzeichnis nutzen
-    if hasattr(module, "FooterCanvas"):
-        banner_path  = enhanced_starterlist["printOptions"].get("bannerPath", "")
-        sponsor_path = enhanced_starterlist["printOptions"].get("sponsorPath", "")
+    # Banner und Sponsorenleiste: User-Dateien temporär nach logos/ kopieren
+    import shutil
+    _temp_copies = {}  # {ziel_pfad: backup_pfad oder None}
+    for src_key, dest_name in [("bannerPath", "banner.png"), ("sponsorPath", "sponsorenleiste.png")]:
+        src = banner_sponsor.get(src_key, "")
+        dest = os.path.join("logos", dest_name)
+        if src and os.path.exists(src) and os.path.abspath(src) != os.path.abspath(dest):
+            # Backup falls bereits eine Datei da ist
+            if os.path.exists(dest):
+                backup = dest + ".bak"
+                shutil.copy2(dest, backup)
+                _temp_copies[dest] = backup
+            else:
+                _temp_copies[dest] = None
+            shutil.copy2(src, dest)
+            print(f"PDF DEBUG: Temporär kopiert: {src} → {dest}")
 
-        if banner_path:
-            # Monkey-patch: Banner-Pfad in __init__ überschreiben
-            _orig_init = module.FooterCanvas.__init__
-            def _patched_init(self, *args, _bp=banner_path, _orig=_orig_init, **kwargs):
-                _orig(self, *args, **kwargs)
-                # Banner-Pfad überschreiben wenn User-spezifisch
-                if _bp and os.path.exists(_bp):
-                    try:
-                        pil_img = PILImage.open(_bp)
-                        img_w, img_h = pil_img.size
-                        dpi   = pil_img.info.get('dpi', (72, 72))
-                        dpi_x = dpi[0] if isinstance(dpi, tuple) else dpi
-                        if dpi_x > 150:
-                            disp_w = img_w * 72.0 / dpi_x
-                            disp_h = img_h * 72.0 / dpi_x
-                        else:
-                            disp_w, disp_h = img_w, img_h
-                        self.banner_path   = _bp
-                        self.banner_width  = A4[0]
-                        self.banner_height = A4[0] * (disp_h / disp_w)
-                    except:
-                        pass
-            module.FooterCanvas.__init__ = _patched_init
-
-        if sponsor_path:
-            # Monkey-patch: Sponsorenleiste-Pfad in draw_footer überschreiben
-            _orig_footer = module.FooterCanvas.draw_footer
-            def _patched_footer(self, _sp=sponsor_path, _orig=_orig_footer):
-                if not self._print_options.get("show_sponsor_bar", True):
-                    return
-                if _sp and os.path.exists(_sp):
-                    try:
-                        from reportlab.lib.utils import ImageReader
-                        from reportlab.lib.pagesizes import A4 as _A4
-                        from reportlab.lib.units import mm as _mm
-                        img    = ImageReader(_sp)
-                        w_px, h_px = img.getSize()
-                        img_w  = 190 * _mm
-                        img_h  = img_w * (h_px / w_px)
-                        x = (_A4[0] - img_w) / 2
-                        self.drawImage(_sp, x, 4 * _mm, width=img_w, height=img_h,
-                                       preserveAspectRatio=True, mask='auto')
-                    except:
-                        pass
-                else:
-                    _orig(self)
-            module.FooterCanvas.draw_footer = _patched_footer
-
-        # get_sponsor_bar_height patchen für korrekte Randberechnung
-        if sponsor_path and hasattr(module, "get_sponsor_bar_height"):
-            def _patched_height(_sp=sponsor_path):
-                if os.path.exists(_sp):
-                    try:
-                        from reportlab.lib.utils import ImageReader
-                        from reportlab.lib.units import mm as _mm
-                        img = ImageReader(_sp)
-                        w_px, h_px = img.getSize()
-                        return (190 * _mm) * (h_px / w_px)
-                    except:
-                        return 25 * _mm
-                return 0
-            module.get_sponsor_bar_height = _patched_height
-
-    # call render mit vollständigem Pfad und erweiterter starterlist
-    # Versuche logo_max_width_cm zu übergeben, falls das Template es unterstützt
     try:
         module.render(enhanced_starterlist, output_path, logo_max_width_cm=logo_max_width_cm)
         print(f"PDF DEBUG: Template mit logo_max_width_cm={logo_max_width_cm}cm aufgerufen")
     except TypeError:
         module.render(enhanced_starterlist, output_path)
         print(f"PDF DEBUG: Template ohne logo_max_width_cm Parameter (alte Version)")
+    finally:
+        # Temporäre Kopien rückgängig machen
+        for dest, backup in _temp_copies.items():
+            try:
+                os.remove(dest)
+                if backup and os.path.exists(backup):
+                    shutil.move(backup, dest)
+            except:
+                pass
 
     return output_path
