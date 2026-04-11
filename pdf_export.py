@@ -60,6 +60,58 @@ def _find_logo_file(logo_dir: str, basename: str) -> str:
             return path
     return None
 
+def _get_competition_logo_path(starterlist: dict, username: str = None) -> str:
+    """
+    Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema.
+    Sucht zuerst im User-Unterordner, dann im gemeinsamen logos/ Ordner.
+    """
+    comp_number = starterlist.get("competitionNumber")
+    div_number  = starterlist.get("divisionNumber")
+
+    if username and username.strip() and username.strip().lower() != "standard":
+        logo_dir = os.path.join("logos", username.strip())
+    else:
+        logo_dir = "logos"
+
+    if not comp_number:
+        fallback_path = _find_logo_file(logo_dir, "logo")
+        if fallback_path:
+            print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
+            return fallback_path
+        else:
+            print("PDF DEBUG: Kein Standard-Logo gefunden, ohne Logo fortfahren")
+            return None
+
+    try:
+        comp_formatted = f"{int(comp_number):02d}"
+    except (ValueError, TypeError):
+        comp_formatted = str(comp_number).zfill(2)
+
+    if div_number:
+        try:
+            div_formatted = f"{int(div_number)}"
+        except (ValueError, TypeError):
+            div_formatted = str(div_number)
+    else:
+        div_formatted = "0"
+
+    logo_basename = f"{comp_formatted}{div_formatted}"
+    logo_path = _find_logo_file(logo_dir, logo_basename)
+
+    print(f"PDF DEBUG: Suche Logo: {logo_dir}/{logo_basename}.*")
+
+    if logo_path:
+        print(f"PDF DEBUG: Prüfungsspezifisches Logo gefunden: {logo_path}")
+        return logo_path
+    else:
+        fallback_path = _find_logo_file(logo_dir, "logo")
+        if fallback_path:
+            print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
+            return fallback_path
+        else:
+            print("PDF DEBUG: Kein Logo gefunden, ohne Logo fortfahren")
+            return None
+
 def _get_banner_sponsor_paths(username: str = None) -> dict:
     """
     Ermittelt die Pfade für Banner und Sponsorenleiste.
