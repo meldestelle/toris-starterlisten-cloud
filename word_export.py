@@ -78,7 +78,7 @@ def _get_banner_sponsor_paths(username: str = None) -> dict:
         print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
         return _find_logo_file("logos", "logo")
 
-def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0) -> str:
+def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0, username: str = None) -> str:
     """
     Erstellt ein Word-Dokument basierend auf der Starterliste und dem gewählten Template
     
@@ -128,9 +128,8 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
         }
 
     # Banner und Sponsorenleiste Pfade ermitteln
-    banner_sponsor = _get_banner_sponsor_paths()
+    banner_sponsor = _get_banner_sponsor_paths(username=username)
     starterlist_with_logo.update(banner_sponsor)
-    # Auch in printOptions für Templates
     starterlist_with_logo["printOptions"]["bannerPath"]  = banner_sponsor.get("bannerPath", "")
     starterlist_with_logo["printOptions"]["sponsorPath"] = banner_sponsor.get("sponsorPath", "")
     
@@ -189,10 +188,34 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
         
         # Direkter Import des Moduls
         template_module = importlib.import_module(module_name)
-        
-        # render-Funktion aufrufen
-        result_path = template_module.render(starterlist_with_logo, filename)
-        
+
+        # Banner/Sponsorenleiste: User-Dateien temporär nach logos/ kopieren
+        import shutil
+        _temp_copies = {}
+        for src_key, dest_name in [("bannerPath", "banner.png"), ("sponsorPath", "sponsorenleiste.png")]:
+            src  = banner_sponsor.get(src_key, "")
+            dest = os.path.join("logos", dest_name)
+            if src and os.path.exists(src) and os.path.abspath(src) != os.path.abspath(dest):
+                if os.path.exists(dest):
+                    backup = dest + ".bak"
+                    shutil.copy2(dest, backup)
+                    _temp_copies[dest] = backup
+                else:
+                    _temp_copies[dest] = None
+                shutil.copy2(src, dest)
+                print(f"WORD EXPORT DEBUG: Temporär kopiert: {src} → {dest}")
+
+        try:
+            result_path = template_module.render(starterlist_with_logo, filename)
+        finally:
+            for dest, backup in _temp_copies.items():
+                try:
+                    os.remove(dest)
+                    if backup and os.path.exists(backup):
+                        shutil.move(backup, dest)
+                except:
+                    pass
+
         print(f"WORD EXPORT DEBUG: Word-Dokument erfolgreich erstellt: {result_path}")
         return result_path
         
