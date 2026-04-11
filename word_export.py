@@ -3,66 +3,77 @@ import importlib
 import os
 import json
 
-def determine_logo_path(starterlist):
+def _find_logo_file(logo_dir: str, basename: str) -> str:
+    """Sucht Logo in .png / .jpg / .jpeg"""
+    for ext in [".png", ".jpg", ".jpeg"]:
+        path = os.path.join(logo_dir, basename + ext)
+        if os.path.exists(path):
+            return path
+    return None
+
+def determine_logo_path(starterlist, username: str = None):
     """
-    Bestimmt den Logo-Pfad basierend auf XXY-Schema:
-    XX = Prüfungsnummer (2-stellig mit führender 0)
-    Y = Abteilungsnummer (1-stellig, 0 wenn keine Abteilung)
-    
-    Beispiele:
-    - Prüfung 17, Abt. 2 → logos/172.png
-    - Prüfung 10, keine Abt. → logos/100.png
-    - Fallback → logos/logo.png
+    Bestimmt den Logo-Pfad basierend auf XXY-Schema.
+
+    Suchreihenfolge:
+    - Mit username: logos/<username>/XXY.* → logos/<username>/logo.*
+    - Ohne username: logos/XXY.* → logos/logo.*
+
+    XX = Prüfungsnummer (2-stellig), Y = Abteilungsnummer (1-stellig, 0 = keine)
     """
     try:
-        # Standard-Fallback
-        default_logo = "logos/logo.png"
-        
+        # Logo-Verzeichnis bestimmen
+        if username and username.strip() and username.strip().lower() != "standard":
+            logo_dir = os.path.join("logos", username.strip())
+            os.makedirs(logo_dir, exist_ok=True)
+        else:
+            logo_dir = "logos"
+
         # Prüfungsnummer ermitteln
         comp_number = starterlist.get("competitionNumber")
         if not comp_number:
-            return default_logo if os.path.exists(default_logo) else None
-            
-        # Zu Integer konvertieren
+            fallback = _find_logo_file(logo_dir, "logo")
+            return fallback
+
         try:
             comp_num_int = int(comp_number)
         except (ValueError, TypeError):
-            return default_logo if os.path.exists(default_logo) else None
-        
+            fallback = _find_logo_file(logo_dir, "logo")
+            return fallback
+
         # Abteilungsnummer ermitteln
-        division_num = 0  # Default: keine Abteilung
+        division_num = 0
         division_number = starterlist.get("divisionNumber")
-        
         if division_number:
             try:
                 division_num = int(division_number)
             except (ValueError, TypeError):
                 division_num = 0
-        
-        # XXY-Format erstellen: XX = Prüfung (2-stellig), Y = Abteilung (1-stellig)
+
+        # XXY-Format
         xxy_code = f"{comp_num_int:02d}{division_num}"
-        specific_logo = f"logos/{xxy_code}.png"
-        
-        print(f"WORD EXPORT DEBUG: Prüfung {comp_num_int}, Abt. {division_num} → Logo: {specific_logo}")
-        
-        # Prüfungsspezifisches Logo prüfen
-        if os.path.exists(specific_logo):
+        specific_logo = _find_logo_file(logo_dir, xxy_code)
+
+        print(f"WORD EXPORT DEBUG: Prüfung {comp_num_int}, Abt. {division_num} → Suche: {logo_dir}/{xxy_code}.*")
+
+        if specific_logo:
             print(f"WORD EXPORT DEBUG: Spezifisches Logo gefunden: {specific_logo}")
             return specific_logo
-        
+
         # Fallback: Standard-Logo
-        if os.path.exists(default_logo):
-            print(f"WORD EXPORT DEBUG: Standard-Logo verwendet: {default_logo}")
-            return default_logo
-        
+        fallback = _find_logo_file(logo_dir, "logo")
+        if fallback:
+            print(f"WORD EXPORT DEBUG: Standard-Logo verwendet: {fallback}")
+            return fallback
+
         print("WORD EXPORT DEBUG: Kein Logo gefunden")
         return None
-        
+
     except Exception as e:
         print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
-        return "logos/logo.png" if os.path.exists("logos/logo.png") else None
+        return _find_logo_file("logos", "logo")
 
-def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0) -> str:
+def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0, username: str = None) -> str:
     """
     Erstellt ein Word-Dokument basierend auf der Starterliste und dem gewählten Template
     
@@ -80,7 +91,7 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
     # Logo-Pfad bestimmen und in starterlist einfügen
     logo_path = None
     if logos_enabled:
-        logo_path = determine_logo_path(starterlist)
+        logo_path = determine_logo_path(starterlist, username=username)
         
     # Logo-Pfad in starterlist einfügen für Template-Zugriff
     starterlist_with_logo = starterlist.copy()

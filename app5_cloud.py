@@ -236,10 +236,20 @@ def get_available_word_templates_from_folder():
                 templates.append(f.stem)
     return sorted(templates)
 
+def get_user_logos_dir():
+    """Gibt das Logo-Verzeichnis für den aktuellen User zurück"""
+    username = st.session_state.get("username", "Standard")
+    if username and username.strip() and username.strip().lower() != "standard":
+        user_dir = LOGOS_DIR / username.strip()
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+    return LOGOS_DIR
+
 def get_available_logos():
     logos = []
-    if LOGOS_DIR.exists():
-        for f in LOGOS_DIR.glob("*"):
+    logos_dir = get_user_logos_dir()
+    if logos_dir.exists():
+        for f in logos_dir.glob("*"):
             if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
                 logos.append(f.name)
     return sorted(logos)
@@ -260,7 +270,7 @@ def delete_word_template(template_name):
     return False
 
 def delete_logo(logo_name):
-    logo_path = LOGOS_DIR / logo_name
+    logo_path = get_user_logos_dir() / logo_name
     if logo_path.exists():
         logo_path.unlink()
         return True
@@ -369,6 +379,11 @@ def render_file_manager():
     
     with tab3:
         st.subheader("Logo hochladen")
+        username = st.session_state.get("username", "Standard")
+        if username and username.lower() != "standard":
+            st.info(f"📁 Logos werden in **logos/{username}/** gespeichert")
+        else:
+            st.info("📁 Logos werden im gemeinsamen Ordner **logos/** gespeichert")
         uploaded_logo = st.file_uploader(
             "Logo-Datei",
             type=['png', 'jpg', 'jpeg', 'gif', 'bmp'],
@@ -381,7 +396,7 @@ def render_file_manager():
             
             if st.button("✅ Logo speichern", key="save_logo"):
                 try:
-                    save_uploaded_file(uploaded_logo, LOGOS_DIR)
+                    save_uploaded_file(uploaded_logo, get_user_logos_dir())
                     st.success(f"✅ Logo '{uploaded_logo.name}' gespeichert!")
                     # Clear uploader
                     if "logo_upload_key" not in st.session_state:
@@ -398,7 +413,7 @@ def render_file_manager():
             cols = st.columns(4)
             for idx, logo in enumerate(logos):
                 with cols[idx % 4]:
-                    logo_path = LOGOS_DIR / logo
+                    logo_path = get_user_logos_dir() / logo
                     try:
                         st.image(str(logo_path), caption=logo, width=150)
                         if st.button("🗑️", key=f"del_logo_{logo}"):
@@ -1053,7 +1068,8 @@ with tab2:
                                         st.session_state.spacing_bottom_cm,
                                         st.session_state.logo_max_width_cm,
                                         output_dir=str(OUTPUT_DIR),
-                                        print_options=print_options
+                                        print_options=print_options,
+                                        username=st.session_state.get("username")
                                     )
                                     
                                     if not pdf_path or not os.path.exists(pdf_path):
@@ -1123,7 +1139,8 @@ with tab2:
                                     word_path,
                                     logos_enabled=True,
                                     print_options=word_print_options,
-                                    logo_max_width_cm=st.session_state.get("logo_max_width_cm", 5.0)
+                                    logo_max_width_cm=st.session_state.get("logo_max_width_cm", 5.0),
+                                    username=st.session_state.get("username")
                                 )
                                 
                                 if not word_path or not os.path.exists(word_path):

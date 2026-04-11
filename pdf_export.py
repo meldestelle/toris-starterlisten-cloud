@@ -63,32 +63,40 @@ def _find_logo_file(logo_dir: str, basename: str) -> str:
             return path
     return None
 
-def _get_competition_logo_path(starterlist: dict) -> str:
+def _get_competition_logo_path(starterlist: dict, username: str = None) -> str:
     """
-    Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema
+    Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema.
+    
+    Suchreihenfolge:
+    - Mit username: logos/<username>/XXY.* → logos/<username>/logo.*
+    - Ohne username: logos/XXY.* → logos/logo.*
+    
     XX = Competition (zweistellig), Y = Division (einstellig, 0 wenn keine Abteilung)
-    Gibt None zurück wenn kein Logo gefunden wird (kein Fehler)
     """
     comp_number = starterlist.get("competitionNumber")
-    div_number = starterlist.get("divisionNumber")
-    
+    div_number  = starterlist.get("divisionNumber")
+
+    # Logo-Verzeichnis bestimmen
+    if username and username.strip() and username.strip().lower() != "standard":
+        logo_dir = os.path.join("logos", username.strip())
+        os.makedirs(logo_dir, exist_ok=True)
+    else:
+        logo_dir = "logos"
+
     if not comp_number:
-        # Fallback auf Standard-Logo prüfen (.png / .jpg / .jpeg)
-        fallback_path = _find_logo_file("logos", "logo")
+        fallback_path = _find_logo_file(logo_dir, "logo")
         if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
         else:
             print("PDF DEBUG: Kein Standard-Logo gefunden, ohne Logo fortfahren")
             return None
-    
+
     try:
-        # Competition zweistellig formatieren
         comp_formatted = f"{int(comp_number):02d}"
     except (ValueError, TypeError):
         comp_formatted = str(comp_number).zfill(2)
-    
-    # Division einstellig formatieren (0 wenn keine Abteilung)
+
     if div_number:
         try:
             div_formatted = f"{int(div_number)}"
@@ -96,20 +104,17 @@ def _get_competition_logo_path(starterlist: dict) -> str:
             div_formatted = str(div_number)
     else:
         div_formatted = "0"
-    
-    # Logo-Dateiname nach XXY-Schema (.png / .jpg / .jpeg)
+
     logo_basename = f"{comp_formatted}{div_formatted}"
-    logo_path = _find_logo_file("logos", logo_basename)
+    logo_path = _find_logo_file(logo_dir, logo_basename)
 
-    print(f"PDF DEBUG: Suche Logo: logos/{logo_basename}.*")
+    print(f"PDF DEBUG: Suche Logo: {logo_dir}/{logo_basename}.*")
 
-    # Prüfen ob spezifisches Logo existiert
     if logo_path:
         print(f"PDF DEBUG: Prüfungsspezifisches Logo gefunden: {logo_path}")
         return logo_path
     else:
-        # Fallback auf Standard-Logo (.png / .jpg / .jpeg)
-        fallback_path = _find_logo_file("logos", "logo")
+        fallback_path = _find_logo_file(logo_dir, "logo")
         if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
@@ -117,7 +122,7 @@ def _get_competition_logo_path(starterlist: dict) -> str:
             print("PDF DEBUG: Kein Logo gefunden, ohne Logo fortfahren")
             return None
 
-def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, output_dir: str = None, print_options: dict = None):
+def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, output_dir: str = None, print_options: dict = None, username: str = None):
     """
     Lädt das angegebene Template-Modul aus templates/pdf und ruft dessen render(starterlist, filename) auf.
     Alle Dateien werden im output_dir (oder 'Ausgabe'-Ordner) erstellt.
@@ -135,7 +140,7 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
     output_path = os.path.join(target_output_dir, filename)
     
     # Prüfungsspezifisches Logo ermitteln
-    logo_path = _get_competition_logo_path(starterlist)
+    logo_path = _get_competition_logo_path(starterlist, username=username)
     
     # Starterlist um Logo-Information erweitern (nur wenn Logo vorhanden)
     enhanced_starterlist = starterlist.copy()
