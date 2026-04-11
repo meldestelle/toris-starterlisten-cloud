@@ -11,37 +11,44 @@ def _find_logo_file(logo_dir: str, basename: str) -> str:
             return path
     return None
 
-def determine_logo_path(starterlist, username: str = None):
+def _get_banner_sponsor_paths(username: str = None) -> dict:
+    """
+    Ermittelt die Pfade für Banner und Sponsorenleiste.
+    Sucht zuerst im User-Unterordner, dann im gemeinsamen logos/ Ordner.
+    """
+    if username and username.strip() and username.strip().lower() != "standard":
+        user_dir = os.path.join("logos", username.strip())
+    else:
+        user_dir = None
+
+    result = {}
+    for key, basename in [("bannerPath", "banner"), ("sponsorPath", "sponsorenleiste")]:
+        found = None
+        if user_dir:
+            found = _find_logo_file(user_dir, basename)
+        if not found:
+            found = _find_logo_file("logos", basename)
+        if found:
+            result[key] = found
+            print(f"WORD EXPORT DEBUG: {key} = {found}")
+    return result
     """
     Bestimmt den Logo-Pfad basierend auf XXY-Schema.
-
-    Suchreihenfolge:
-    - Mit username: logos/<username>/XXY.* → logos/<username>/logo.*
-    - Ohne username: logos/XXY.* → logos/logo.*
-
     XX = Prüfungsnummer (2-stellig), Y = Abteilungsnummer (1-stellig, 0 = keine)
+    Unterstützt .png, .jpg, .jpeg
     """
     try:
-        # Logo-Verzeichnis bestimmen
-        if username and username.strip() and username.strip().lower() != "standard":
-            logo_dir = os.path.join("logos", username.strip())
-            os.makedirs(logo_dir, exist_ok=True)
-        else:
-            logo_dir = "logos"
+        logo_dir = "logos"
 
-        # Prüfungsnummer ermitteln
         comp_number = starterlist.get("competitionNumber")
         if not comp_number:
-            fallback = _find_logo_file(logo_dir, "logo")
-            return fallback
+            return _find_logo_file(logo_dir, "logo")
 
         try:
             comp_num_int = int(comp_number)
         except (ValueError, TypeError):
-            fallback = _find_logo_file(logo_dir, "logo")
-            return fallback
+            return _find_logo_file(logo_dir, "logo")
 
-        # Abteilungsnummer ermitteln
         division_num = 0
         division_number = starterlist.get("divisionNumber")
         if division_number:
@@ -50,7 +57,6 @@ def determine_logo_path(starterlist, username: str = None):
             except (ValueError, TypeError):
                 division_num = 0
 
-        # XXY-Format
         xxy_code = f"{comp_num_int:02d}{division_num}"
         specific_logo = _find_logo_file(logo_dir, xxy_code)
 
@@ -60,7 +66,6 @@ def determine_logo_path(starterlist, username: str = None):
             print(f"WORD EXPORT DEBUG: Spezifisches Logo gefunden: {specific_logo}")
             return specific_logo
 
-        # Fallback: Standard-Logo
         fallback = _find_logo_file(logo_dir, "logo")
         if fallback:
             print(f"WORD EXPORT DEBUG: Standard-Logo verwendet: {fallback}")
@@ -73,7 +78,7 @@ def determine_logo_path(starterlist, username: str = None):
         print(f"WORD EXPORT DEBUG: Fehler bei Logo-Bestimmung: {e}")
         return _find_logo_file("logos", "logo")
 
-def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0, username: str = None) -> str:
+def create_word(starterlist: dict, template_name: str, filename: str, logos_enabled: bool = True, print_options: dict = None, logo_max_width_cm: float = 5.0) -> str:
     """
     Erstellt ein Word-Dokument basierend auf der Starterliste und dem gewählten Template
     
@@ -91,7 +96,7 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
     # Logo-Pfad bestimmen und in starterlist einfügen
     logo_path = None
     if logos_enabled:
-        logo_path = determine_logo_path(starterlist, username=username)
+        logo_path = determine_logo_path(starterlist)
         
     # Logo-Pfad in starterlist einfügen für Template-Zugriff
     starterlist_with_logo = starterlist.copy()
@@ -122,7 +127,12 @@ def create_word(starterlist: dict, template_name: str, filename: str, logos_enab
             "show_header":      True,
         }
 
-    print(f"WORD EXPORT DEBUG: logoPath gesetzt auf: {logo_path}")
+    # Banner und Sponsorenleiste Pfade ermitteln
+    banner_sponsor = _get_banner_sponsor_paths()
+    starterlist_with_logo.update(banner_sponsor)
+    # Auch in printOptions für Templates
+    starterlist_with_logo["printOptions"]["bannerPath"]  = banner_sponsor.get("bannerPath", "")
+    starterlist_with_logo["printOptions"]["sponsorPath"] = banner_sponsor.get("sponsorPath", "")
     
     # Template-Mapping erweitert um Logo-Varianten UND Stream-Templates
     template_mapping = {

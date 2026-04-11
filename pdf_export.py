@@ -8,16 +8,17 @@
 #
 import os
 import importlib.util
+from PIL import Image as PILImage
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
 
 TEMPLATES_DIR = os.path.join("templates", "pdf")
-OUTPUT_DIR = "Ausgabe"  # Standard Ausgabeordner (kann überschrieben werden)
+OUTPUT_DIR = "Ausgabe"  # Einheitlicher Ausgabeordner
 
-def _ensure_output_dir(output_dir=None):
+def _ensure_output_dir():
     """Stellt sicher, dass das Ausgabe-Verzeichnis existiert"""
-    target_dir = output_dir if output_dir else OUTPUT_DIR
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
-    return target_dir
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
 
 def _find_template_file(template_name: str) -> str:
     """
@@ -52,39 +53,44 @@ def _find_template_file(template_name: str) -> str:
     )
 
 def _find_logo_file(logo_dir: str, basename: str) -> str:
-    """
-    Sucht nach einer Logo-Datei mit dem angegebenen Basisnamen (ohne Endung)
-    in verschiedenen Bildformaten (.png, .jpg, .jpeg).
-    Gibt den vollständigen Pfad zurück oder None wenn nicht gefunden.
-    """
+    """Sucht Logo in .png / .jpg / .jpeg"""
     for ext in [".png", ".jpg", ".jpeg"]:
         path = os.path.join(logo_dir, basename + ext)
         if os.path.exists(path):
             return path
     return None
 
-def _get_competition_logo_path(starterlist: dict, username: str = None) -> str:
+def _get_banner_sponsor_paths(username: str = None) -> dict:
     """
-    Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema.
-    
-    Suchreihenfolge:
-    - Mit username: logos/<username>/XXY.* → logos/<username>/logo.*
-    - Ohne username: logos/XXY.* → logos/logo.*
-    
+    Ermittelt die Pfade für Banner und Sponsorenleiste.
+    Sucht zuerst im User-Unterordner, dann im gemeinsamen logos/ Ordner.
+    """
+    if username and username.strip() and username.strip().lower() != "standard":
+        user_dir = os.path.join("logos", username.strip())
+    else:
+        user_dir = None
+
+    result = {}
+    for key, basename in [("bannerPath", "banner"), ("sponsorPath", "sponsorenleiste")]:
+        found = None
+        if user_dir:
+            found = _find_logo_file(user_dir, basename)
+        if not found:
+            found = _find_logo_file("logos", basename)
+        if found:
+            result[key] = found
+            print(f"PDF DEBUG: {key} = {found}")
+    return result
+    """
+    Ermittelt den Pfad zum prüfungsspezifischen Logo basierend auf XXY-Schema
     XX = Competition (zweistellig), Y = Division (einstellig, 0 wenn keine Abteilung)
+    Gibt None zurück wenn kein Logo gefunden wird (kein Fehler)
     """
     comp_number = starterlist.get("competitionNumber")
     div_number  = starterlist.get("divisionNumber")
 
-    # Logo-Verzeichnis bestimmen
-    if username and username.strip() and username.strip().lower() != "standard":
-        logo_dir = os.path.join("logos", username.strip())
-        os.makedirs(logo_dir, exist_ok=True)
-    else:
-        logo_dir = "logos"
-
     if not comp_number:
-        fallback_path = _find_logo_file(logo_dir, "logo")
+        fallback_path = _find_logo_file("logos", "logo")
         if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
@@ -106,15 +112,15 @@ def _get_competition_logo_path(starterlist: dict, username: str = None) -> str:
         div_formatted = "0"
 
     logo_basename = f"{comp_formatted}{div_formatted}"
-    logo_path = _find_logo_file(logo_dir, logo_basename)
+    logo_path = _find_logo_file("logos", logo_basename)
 
-    print(f"PDF DEBUG: Suche Logo: {logo_dir}/{logo_basename}.*")
+    print(f"PDF DEBUG: Suche Logo: logos/{logo_basename}.*")
 
     if logo_path:
         print(f"PDF DEBUG: Prüfungsspezifisches Logo gefunden: {logo_path}")
         return logo_path
     else:
-        fallback_path = _find_logo_file(logo_dir, "logo")
+        fallback_path = _find_logo_file("logos", "logo")
         if fallback_path:
             print(f"PDF DEBUG: Verwende Standard-Logo: {fallback_path}")
             return fallback_path
@@ -122,25 +128,28 @@ def _get_competition_logo_path(starterlist: dict, username: str = None) -> str:
             print("PDF DEBUG: Kein Logo gefunden, ohne Logo fortfahren")
             return None
 
-def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, output_dir: str = None, print_options: dict = None, username: str = None):
+def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top_cm: float = 0, spacing_bottom_cm: float = 0, logo_max_width_cm: float = 5.0, print_options: dict = None):
     """
     Lädt das angegebene Template-Modul aus templates/pdf und ruft dessen render(starterlist, filename) auf.
-    Alle Dateien werden im output_dir (oder 'Ausgabe'-Ordner) erstellt.
+    Alle Dateien werden im 'Ausgabe'-Ordner erstellt.
     Erweitert starterlist um prüfungsspezifischen Logo-Pfad.
     
     Für Templates die mit "liste_" beginnen werden spacing_top_cm und spacing_bottom_cm
     als Abstände oben und unten verwendet.
     
     Für Templates mit Logo-Unterstützung wird logo_max_width_cm als maximale Logo-Breite verwendet.
+    
+    print_options enthält Druckoptionen:
+        sponsor_top, sponsor_bottom, single_sided, show_banner, show_sponsor_bar, show_title
     """
     # Ausgabe-Ordner sicherstellen
-    target_output_dir = _ensure_output_dir(output_dir)
+    _ensure_output_dir()
     
     # Vollständigen Pfad für Ausgabedatei erstellen
-    output_path = os.path.join(target_output_dir, filename)
+    output_path = os.path.join(OUTPUT_DIR, filename)
     
     # Prüfungsspezifisches Logo ermitteln
-    logo_path = _get_competition_logo_path(starterlist, username=username)
+    logo_path = _get_competition_logo_path(starterlist)
     
     # Starterlist um Logo-Information erweitern (nur wenn Logo vorhanden)
     enhanced_starterlist = starterlist.copy()
@@ -150,26 +159,31 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
     else:
         print("PDF DEBUG: Kein Logo verfügbar, ohne Logo fortfahren")
     
-    # Für liste_ Templates: Abstände hinzufügen
-    if template_name.startswith("liste_"):
-        enhanced_starterlist["spacingTopCm"] = spacing_top_cm
-        enhanced_starterlist["spacingBottomCm"] = spacing_bottom_cm
-        print(f"PDF DEBUG: Liste-Template erkannt - Abstände: Oben={spacing_top_cm}cm, Unten={spacing_bottom_cm}cm")
-
-    # Druckoptionen hinzufügen (immer, damit Templates darauf zugreifen können)
+    # Banner und Sponsorenleiste Pfade ermitteln und in print_options stecken
+    banner_sponsor = _get_banner_sponsor_paths()
+    enhanced_starterlist.update(banner_sponsor)
+    # Auch in printOptions damit FooterCanvas sie findet
+    enhanced_starterlist["printOptions"]["bannerPath"]  = banner_sponsor.get("bannerPath",  os.path.join("logos", "banner.png"))
+    enhanced_starterlist["printOptions"]["sponsorPath"] = banner_sponsor.get("sponsorPath", os.path.join("logos", "sponsorenleiste.png"))
+    enhanced_starterlist["spacingTopCm"] = spacing_top_cm
+    enhanced_starterlist["spacingBottomCm"] = spacing_bottom_cm
+    if spacing_top_cm > 0 or spacing_bottom_cm > 0:
+        print(f"PDF DEBUG: Abstände: Oben={spacing_top_cm}cm, Unten={spacing_bottom_cm}cm")
+    
+    # Druckoptionen in starterlist einfügen
     if print_options:
         enhanced_starterlist["printOptions"] = print_options
-        print(f"PDF DEBUG: print_options hinzugefügt: {print_options}")
+        print(f"PDF DEBUG: Druckoptionen: {print_options}")
     else:
-        # Sichere Defaults damit Templates keinen KeyError bekommen
+        # Defaults: alles an, doppelseitig, kein Sponsorenpapier
         enhanced_starterlist["printOptions"] = {
-            "sponsor_top":      False,
-            "sponsor_bottom":   False,
-            "single_sided":     False,
-            "show_banner":      True,
+            "sponsor_top": False,
+            "sponsor_bottom": False,
+            "single_sided": False,
+            "show_banner": True,
             "show_sponsor_bar": True,
-            "show_title":       True,
-            "show_header":      True,
+            "show_title": True,
+            "show_header": True,
         }
     
     try:
@@ -187,30 +201,80 @@ def create_pdf(starterlist: dict, filename: str, template_name: str, spacing_top
     if not hasattr(module, "render"):
         raise AttributeError(f"Template {template_file} hat keine Funktion render(starterlist, filename)")
 
+    # FooterCanvas patchen: banner/sponsorenleiste aus User-Verzeichnis nutzen
+    if hasattr(module, "FooterCanvas"):
+        banner_path  = enhanced_starterlist["printOptions"].get("bannerPath", "")
+        sponsor_path = enhanced_starterlist["printOptions"].get("sponsorPath", "")
+
+        if banner_path:
+            # Monkey-patch: Banner-Pfad in __init__ überschreiben
+            _orig_init = module.FooterCanvas.__init__
+            def _patched_init(self, *args, _bp=banner_path, _orig=_orig_init, **kwargs):
+                _orig(self, *args, **kwargs)
+                # Banner-Pfad überschreiben wenn User-spezifisch
+                if _bp and os.path.exists(_bp):
+                    try:
+                        pil_img = PILImage.open(_bp)
+                        img_w, img_h = pil_img.size
+                        dpi   = pil_img.info.get('dpi', (72, 72))
+                        dpi_x = dpi[0] if isinstance(dpi, tuple) else dpi
+                        if dpi_x > 150:
+                            disp_w = img_w * 72.0 / dpi_x
+                            disp_h = img_h * 72.0 / dpi_x
+                        else:
+                            disp_w, disp_h = img_w, img_h
+                        self.banner_path   = _bp
+                        self.banner_width  = A4[0]
+                        self.banner_height = A4[0] * (disp_h / disp_w)
+                    except:
+                        pass
+            module.FooterCanvas.__init__ = _patched_init
+
+        if sponsor_path:
+            # Monkey-patch: Sponsorenleiste-Pfad in draw_footer überschreiben
+            _orig_footer = module.FooterCanvas.draw_footer
+            def _patched_footer(self, _sp=sponsor_path, _orig=_orig_footer):
+                if not self._print_options.get("show_sponsor_bar", True):
+                    return
+                if _sp and os.path.exists(_sp):
+                    try:
+                        from reportlab.lib.utils import ImageReader
+                        from reportlab.lib.pagesizes import A4 as _A4
+                        from reportlab.lib.units import mm as _mm
+                        img    = ImageReader(_sp)
+                        w_px, h_px = img.getSize()
+                        img_w  = 190 * _mm
+                        img_h  = img_w * (h_px / w_px)
+                        x = (_A4[0] - img_w) / 2
+                        self.drawImage(_sp, x, 4 * _mm, width=img_w, height=img_h,
+                                       preserveAspectRatio=True, mask='auto')
+                    except:
+                        pass
+                else:
+                    _orig(self)
+            module.FooterCanvas.draw_footer = _patched_footer
+
+        # get_sponsor_bar_height patchen für korrekte Randberechnung
+        if sponsor_path and hasattr(module, "get_sponsor_bar_height"):
+            def _patched_height(_sp=sponsor_path):
+                if os.path.exists(_sp):
+                    try:
+                        from reportlab.lib.utils import ImageReader
+                        from reportlab.lib.units import mm as _mm
+                        img = ImageReader(_sp)
+                        w_px, h_px = img.getSize()
+                        return (190 * _mm) * (h_px / w_px)
+                    except:
+                        return 25 * _mm
+                return 0
+            module.get_sponsor_bar_height = _patched_height
+
     # call render mit vollständigem Pfad und erweiterter starterlist
     # Versuche logo_max_width_cm zu übergeben, falls das Template es unterstützt
     try:
         module.render(enhanced_starterlist, output_path, logo_max_width_cm=logo_max_width_cm)
         print(f"PDF DEBUG: Template mit logo_max_width_cm={logo_max_width_cm}cm aufgerufen")
-    except TypeError as te:
+    except TypeError:
         # Fallback für alte Templates ohne logo_max_width_cm Parameter
-        try:
-            module.render(enhanced_starterlist, output_path)
-            print(f"PDF DEBUG: Template ohne logo_max_width_cm Parameter (alte Version)")
-        except Exception as e:
-            print(f"PDF ERROR: Fehler im Template (ohne logo_max_width_cm): {e}")
-            import traceback
-            traceback.print_exc()
-            raise
-    except Exception as e:
-        print(f"PDF ERROR: Fehler im Template: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
-    
-    # Prüfe ob Datei wirklich existiert
-    if not os.path.exists(output_path):
-        raise FileNotFoundError(f"PDF wurde nicht erstellt: {output_path}")
-    
-    # WICHTIG: Pfad zurückgeben für Download
-    return output_path
+        module.render(enhanced_starterlist, output_path)
+        print(f"PDF DEBUG: Template ohne logo_max_width_cm Parameter (alte Version)")
