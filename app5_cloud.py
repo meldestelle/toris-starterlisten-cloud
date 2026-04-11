@@ -1162,7 +1162,9 @@ with tab2:
                                             )
                             
                             except Exception as e:
+                                import traceback
                                 st.error(f"❌ Fehler: {e}")
+                                st.code(traceback.format_exc())
                                 import traceback
                                 st.code(traceback.format_exc())
                 
