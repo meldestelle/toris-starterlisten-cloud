@@ -151,7 +151,7 @@ from pdf_export import create_pdf
 from word_export import create_word
 
 # API Configuration
-API_BASE = st.secrets.get("API_BASE", "https://toris-test.portrix.net/api/results/v1")
+API_BASE = st.secrets.get("API_BASE", "https://toris.online/api/results/v1")
 
 # Verzeichnisse
 BASE_DIR = Path(".")
