@@ -128,6 +128,24 @@ if "show_title" not in st.session_state:
     st.session_state.show_title = True
 if "show_header" not in st.session_state:
     st.session_state.show_header = True
+if "use_new_knr" not in st.session_state:
+    st.session_state.use_new_knr = False
+if "knr_mapping" not in st.session_state:
+    st.session_state.knr_mapping = {}
+
+
+def apply_knr_mapping(starterlist: dict, mapping: dict) -> dict:
+    """Ersetzt cno in allen Pferden gemaess KNr-Mapping (alt -> neu)."""
+    if not mapping:
+        return starterlist
+    import copy
+    sl = copy.deepcopy(starterlist)
+    for starter in sl.get("starters", []):
+        for horse in starter.get("horses", []):
+            old_cno = str(horse.get("cno", ""))
+            if old_cno in mapping:
+                horse["cno"] = mapping[old_cno]
+    return sl
 
 from pdf_export import create_pdf
 from word_export import create_word
@@ -731,6 +749,37 @@ with st.sidebar:
             "Einseitiger Druck", value=st.session_state.single_sided, key="single_sided_cb"
         )
 
+    # --- Neue Kopfnummern ---
+    st.markdown("---")
+    st.session_state.use_new_knr = st.checkbox(
+        "🔀 Neue Kopfnummern verwenden",
+        value=st.session_state.use_new_knr,
+        key="use_new_knr_cb"
+    )
+    if st.session_state.use_new_knr:
+        knr_file = st.file_uploader(
+            "Vergleichstabelle laden (.json / .csv / .xlsx)",
+            type=["json", "csv", "xlsx"],
+            key="knr_mapping_uploader"
+        )
+        if knr_file is not None:
+            try:
+                import pandas as _pd, json as _json
+                if knr_file.name.endswith(".json"):
+                    raw = _json.loads(knr_file.read().decode("utf-8"))
+                    st.session_state.knr_mapping = {str(k): int(v) for k, v in raw.items()}
+                elif knr_file.name.endswith(".csv"):
+                    df_m = _pd.read_csv(knr_file, sep=";")
+                    st.session_state.knr_mapping = {str(int(r["KNr_alt"])): int(r["KNr_neu"]) for _, r in df_m.iterrows()}
+                else:
+                    df_m = _pd.read_excel(knr_file)
+                    st.session_state.knr_mapping = {str(int(r["KNr_alt"])): int(r["KNr_neu"]) for _, r in df_m.iterrows()}
+                st.success(f"✅ {len(st.session_state.knr_mapping)} Kopfnummern geladen")
+            except Exception as _e:
+                st.error(f"Fehler beim Laden: {_e}")
+        elif st.session_state.knr_mapping:
+            st.info(f"ℹ️ {len(st.session_state.knr_mapping)} Kopfnummern aktiv")
+
     # Abstände — sichtbar wenn Sponsorenpapier aktiv oder Prüfungskopf ausgeblendet
     needs_spacing = (
         st.session_state.sponsor_top
@@ -982,7 +1031,8 @@ with tab2:
                             athlete = entry.get("athlete", {})
                             horses = entry.get("horses", [])
                             horse_name = horses[0].get("name", "N/A") if horses else "N/A"
-                            st.text(f"{entry.get('startNumber', 'N/A')} | {athlete.get('name', 'N/A')} - {horse_name}")
+                            cno = horses[0].get('cno', entry.get('startNumber', 'N/A')) if horses else 'N/A'
+                            st.text(f"{cno} | {athlete.get('name', 'N/A')} - {horse_name}")
                         
                         if total_count > preview_count:
                             st.info(f"... und {total_count - preview_count} weitere Starter")
@@ -1134,8 +1184,12 @@ with tab2:
                                     if selected_tpl in ("pdf_dre_pferdewechsel_cloud", "pdf_dre_pferdewechsel_int_cloud"):
                                         starterlist["derby_config"] = st.session_state.get("pw_config", {})
 
-                                    pdf_path = create_pdf(
+                                    _starterlist_for_pdf = apply_knr_mapping(
                                         starterlist,
+                                        st.session_state.knr_mapping if st.session_state.use_new_knr else {}
+                                    )
+                                    pdf_path = create_pdf(
+                                        _starterlist_for_pdf,
                                         pdf_filename,
                                         st.session_state.pdf_template,
                                         st.session_state.spacing_top_cm,
@@ -1209,8 +1263,12 @@ with tab2:
                                     "spacing_top_cm":     st.session_state.get("spacing_top_cm", 3.0),
                                     "spacing_bottom_cm":  st.session_state.get("spacing_bottom_cm", 2.0),
                                 }
-                                word_path = create_word(
+                                _starterlist_for_word = apply_knr_mapping(
                                     starterlist,
+                                    st.session_state.knr_mapping if st.session_state.use_new_knr else {}
+                                )
+                                word_path = create_word(
+                                    _starterlist_for_word,
                                     st.session_state.word_template,
                                     word_path,
                                     logos_enabled=True,
