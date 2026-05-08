@@ -354,7 +354,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                     self.addPageTemplates([PageTemplate(id='AllPages', frames=[frame_all])])
             doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
         else:
-            from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
+            from reportlab.platypus import BaseDocTemplate
             class CustomDocTemplate(BaseDocTemplate):
                 def __init__(self, filename, **kw):
                     self.allowSplitting = 1
