@@ -130,6 +130,8 @@ if "show_header" not in st.session_state:
     st.session_state.show_header = True
 if "use_new_knr" not in st.session_state:
     st.session_state.use_new_knr = False
+if "use_knr_column" not in st.session_state:
+    st.session_state.use_knr_column = False
 if "knr_mapping" not in st.session_state:
     st.session_state.knr_mapping = {}
 
@@ -780,6 +782,16 @@ with st.sidebar:
         elif st.session_state.knr_mapping:
             st.info(f"ℹ️ {len(st.session_state.knr_mapping)} Kopfnummern aktiv")
 
+    # --- KNr.-Spalte (nur für Hinderniskarte) ---
+    if st.session_state.get("pdf_template") == "pdf_Hinderniskarte":
+        st.markdown("---")
+        st.session_state.use_knr_column = st.checkbox(
+            "KNr. statt R-Nr. anzeigen",
+            value=st.session_state.use_knr_column,
+            key="use_knr_column_cb",
+            help="Zeigt Kopfnummer (horses[0].cno) statt Rueckennummer (backNumber) in der ersten Spalte"
+        )
+
     # Abstände — sichtbar wenn Sponsorenpapier aktiv oder Prüfungskopf ausgeblendet
     needs_spacing = (
         st.session_state.sponsor_top
@@ -1172,6 +1184,7 @@ with tab2:
                                         "show_sponsor_bar": st.session_state.get("show_sponsor_bar", True),
                                         "show_title":       st.session_state.get("show_title", True),
                                         "show_header":      st.session_state.get("show_header", True),
+                                        "use_knr_column":   st.session_state.get("use_knr_column", False),
                                     }
 
                                     # Template-spezifische Konfigurationen eintragen
