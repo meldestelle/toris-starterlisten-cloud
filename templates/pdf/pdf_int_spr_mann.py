@@ -711,10 +711,14 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         nationality = athlete.get("nation", "")
         team_name = s.get("team", "") or ""
 
-        # Reiter-HTML: Name + Team darunter
+        # Reiter-HTML: Name + Team darunter; ohne Team → Land ausgeschrieben
         athlete_html = f"<b>{athlete_name}</b>" if athlete_name else ""
         if team_name:
             athlete_html += f"<br/><font size=7>{team_name}</font>"
+        elif nationality:
+            country_full = get_country_name(nationality)
+            if country_full:
+                athlete_html += f"<br/><font size=7>{country_full}</font>"
         
         # Nationalität mit Flagge UND Kürzel
         nat_code_iso = get_nationality_code(nationality) if nationality else ""  # ISO für Mapping
