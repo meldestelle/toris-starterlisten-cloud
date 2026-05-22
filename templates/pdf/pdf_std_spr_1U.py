@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_int_spr_zucht_komp.py - International Springen Zucht kompakt - mit printOptions-Unterstützung
+# templates/pdf/pdf_std_spr_1U.py - Nationales Springen 1 Umlauf - mit printOptions-Unterstützung
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
@@ -11,7 +11,15 @@ from datetime import datetime
 import os
 from PIL import Image as PILImage
 
-# No translation needed - English is default
+WEEKDAY_MAP = {
+    "Monday": "Montag", "Tuesday": "Dienstag", "Wednesday": "Mittwoch",
+    "Thursday": "Donnerstag", "Friday": "Freitag", "Saturday": "Samstag", "Sunday": "Sonntag"
+}
+MONTH_MAP = {
+    "January": "Januar", "February": "Februar", "March": "März", "April": "April",
+    "May": "Mai", "June": "Juni", "July": "Juli", "August": "August",
+    "September": "September", "October": "Oktober", "November": "November", "December": "Dezember"
+}
 
 def get_nationality_code(nationality_str):
     """IOC → ISO 3166-1 alpha-3"""
@@ -39,117 +47,117 @@ def get_nationality_code(nationality_str):
     }
     return ioc_to_iso.get(code, code[:3] if len(code) >= 3 else code)
 
-def get_country_name_english(ioc_code):
-    """Returns full country name in English - Complete list for all 250 countries"""
+def get_country_name(ioc_code):
+    """Returns full country name in German - Complete list for all 250 countries"""
     if not ioc_code:
         return ""
     
     names = {
         # A
-        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albania", "ALG": "Algeria",
-        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua and Barbuda", "ARG": "Argentina",
-        "ARM": "Armenia", "ARU": "Aruba", "ASA": "American Samoa", "AUS": "Australia",
-        "AUT": "Austria", "AZE": "Azerbaijan",
+        "AFG": "Afghanistan", "AIA": "Anguilla", "ALB": "Albanien", "ALG": "Algerien",
+        "AND": "Andorra", "ANG": "Angola", "ANT": "Antigua und Barbuda", "ARG": "Argentinien",
+        "ARM": "Armenien", "ARU": "Aruba", "ASA": "Amerikanisch-Samoa", "AUS": "Australien",
+        "AUT": "Österreich", "AZE": "Aserbaidschan",
         
         # B
-        "BAH": "Bahamas", "BAN": "Bangladesh", "BAR": "Barbados", "BDI": "Burundi",
-        "BEL": "Belgium", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
-        "BIH": "Bosnia and Herzegovina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivia",
-        "BOT": "Botswana", "BRA": "Brazil", "BRN": "Bahrain", "BRU": "Brunei",
-        "BUL": "Bulgaria", "BUR": "Burkina Faso",
+        "BAH": "Bahamas", "BAN": "Bangladesch", "BAR": "Barbados", "BDI": "Burundi",
+        "BEL": "Belgien", "BEN": "Benin", "BER": "Bermuda", "BHU": "Bhutan",
+        "BIH": "Bosnien und Herzegowina", "BIZ": "Belize", "BLR": "Belarus", "BOL": "Bolivien",
+        "BOT": "Botswana", "BRA": "Brasilien", "BRN": "Bahrain", "BRU": "Brunei",
+        "BUL": "Bulgarien", "BUR": "Burkina Faso",
         
         # C
-        "CAF": "Central African Republic", "CAM": "Cambodia", "CAN": "Canada",
-        "CAY": "Cayman Islands", "CGO": "Congo", "CHA": "Chad", "CHI": "Chile",
-        "CHN": "China", "CIV": "Ivory Coast", "CMR": "Cameroon", "COD": "DR Congo",
-        "COK": "Cook Islands", "COL": "Colombia", "COM": "Comoros", "CPV": "Cape Verde",
-        "CRC": "Costa Rica", "CRO": "Croatia", "CUB": "Cuba", "CYP": "Cyprus",
-        "CZE": "Czech Republic",
+        "CAF": "Zentralafrikanische Republik", "CAM": "Kambodscha", "CAN": "Kanada",
+        "CAY": "Kaimaninseln", "CGO": "Kongo", "CHA": "Tschad", "CHI": "Chile",
+        "CHN": "China", "CIV": "Elfenbeinküste", "CMR": "Kamerun", "COD": "DR Kongo",
+        "COK": "Cookinseln", "COL": "Kolumbien", "COM": "Komoren", "CPV": "Kap Verde",
+        "CRC": "Costa Rica", "CRO": "Kroatien", "CUB": "Kuba", "CYP": "Zypern",
+        "CZE": "Tschechien",
         
         # D-E
-        "DEN": "Denmark", "DJI": "Djibouti", "DMA": "Dominica", "DOM": "Dominican Republic",
-        "ECU": "Ecuador", "EGY": "Egypt", "ERI": "Eritrea", "ESA": "El Salvador",
-        "ESP": "Spain", "EST": "Estonia", "ETH": "Ethiopia",
+        "DEN": "Dänemark", "DJI": "Dschibuti", "DMA": "Dominica", "DOM": "Dominikanische Republik",
+        "ECU": "Ecuador", "EGY": "Ägypten", "ERI": "Eritrea", "ESA": "El Salvador",
+        "ESP": "Spanien", "EST": "Estland", "ETH": "Äthiopien",
         
         # F
-        "FAR": "Faroe Islands", "FIJ": "Fiji", "FIN": "Finland", "FRA": "France",
-        "FSM": "Micronesia",
+        "FAR": "Färöer", "FIJ": "Fidschi", "FIN": "Finnland", "FRA": "Frankreich",
+        "FSM": "Mikronesien",
         
         # G
-        "GAB": "Gabon", "GAM": "Gambia", "GBR": "Great Britain", "GBS": "Guinea-Bissau",
-        "GEO": "Georgia", "GEQ": "Equatorial Guinea", "GER": "Germany", "GHA": "Ghana",
-        "GRE": "Greece", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
+        "GAB": "Gabun", "GAM": "Gambia", "GBR": "Großbritannien", "GBS": "Guinea-Bissau",
+        "GEO": "Georgien", "GEQ": "Äquatorialguinea", "GER": "Deutschland", "GHA": "Ghana",
+        "GRE": "Griechenland", "GRN": "Grenada", "GUA": "Guatemala", "GUI": "Guinea",
         "GUM": "Guam", "GUY": "Guyana",
         
         # H-I
-        "HAI": "Haiti", "HKG": "Hong Kong", "HON": "Honduras", "HUN": "Hungary",
-        "INA": "Indonesia", "IND": "India", "IRI": "Iran", "IRL": "Ireland",
-        "IRQ": "Iraq", "ISL": "Iceland", "ISR": "Israel", "ISV": "US Virgin Islands",
-        "ITA": "Italy", "IVB": "British Virgin Islands",
+        "HAI": "Haiti", "HKG": "Hongkong", "HON": "Honduras", "HUN": "Ungarn",
+        "INA": "Indonesien", "IND": "Indien", "IRI": "Iran", "IRL": "Irland",
+        "IRQ": "Irak", "ISL": "Island", "ISR": "Israel", "ISV": "Amerikanische Jungferninseln",
+        "ITA": "Italien", "IVB": "Britische Jungferninseln",
         
         # J-K
-        "JAM": "Jamaica", "JOR": "Jordan", "JPN": "Japan", "KAZ": "Kazakhstan",
-        "KEN": "Kenya", "KGZ": "Kyrgyzstan", "KIR": "Kiribati", "KOR": "South Korea",
-        "KOS": "Kosovo", "KSA": "Saudi Arabia", "KUW": "Kuwait",
+        "JAM": "Jamaika", "JOR": "Jordanien", "JPN": "Japan", "KAZ": "Kasachstan",
+        "KEN": "Kenia", "KGZ": "Kirgisistan", "KIR": "Kiribati", "KOR": "Südkorea",
+        "KOS": "Kosovo", "KSA": "Saudi-Arabien", "KUW": "Kuwait",
         
         # L
-        "LAO": "Laos", "LAT": "Latvia", "LBA": "Libya", "LBN": "Lebanon",
-        "LBR": "Liberia", "LCA": "Saint Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
-        "LTU": "Lithuania", "LUX": "Luxembourg",
+        "LAO": "Laos", "LAT": "Lettland", "LBA": "Libyen", "LBN": "Libanon",
+        "LBR": "Liberia", "LCA": "St. Lucia", "LES": "Lesotho", "LIE": "Liechtenstein",
+        "LTU": "Litauen", "LUX": "Luxemburg",
         
         # M
-        "MAC": "Macau", "MAD": "Madagascar", "MAR": "Morocco", "MAS": "Malaysia",
-        "MAW": "Malawi", "MDA": "Moldova", "MDV": "Maldives", "MEX": "Mexico",
-        "MGL": "Mongolia", "MHL": "Marshall Islands", "MKD": "North Macedonia", "MLI": "Mali",
-        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mozambique",
-        "MRI": "Mauritius", "MTN": "Mauritania", "MYA": "Myanmar",
+        "MAC": "Macau", "MAD": "Madagaskar", "MAR": "Marokko", "MAS": "Malaysia",
+        "MAW": "Malawi", "MDA": "Moldau", "MDV": "Malediven", "MEX": "Mexiko",
+        "MGL": "Mongolei", "MHL": "Marshallinseln", "MKD": "Nordmazedonien", "MLI": "Mali",
+        "MLT": "Malta", "MNE": "Montenegro", "MON": "Monaco", "MOZ": "Mosambik",
+        "MRI": "Mauritius", "MTN": "Mauretanien", "MYA": "Myanmar",
         
         # N
-        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Netherlands", "NEP": "Nepal",
-        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norway", "NRU": "Nauru",
-        "NZL": "New Zealand",
+        "NAM": "Namibia", "NCA": "Nicaragua", "NED": "Niederlande", "NEP": "Nepal",
+        "NGR": "Nigeria", "NIG": "Niger", "NOR": "Norwegen", "NRU": "Nauru",
+        "NZL": "Neuseeland",
         
         # O-P
         "OMA": "Oman", "PAK": "Pakistan", "PAN": "Panama", "PAR": "Paraguay",
-        "PER": "Peru", "PHI": "Philippines", "PLE": "Palestine", "PLW": "Palau",
-        "PNG": "Papua New Guinea", "POL": "Poland", "POR": "Portugal", "PRK": "North Korea",
+        "PER": "Peru", "PHI": "Philippinen", "PLE": "Palästina", "PLW": "Palau",
+        "PNG": "Papua-Neuguinea", "POL": "Polen", "POR": "Portugal", "PRK": "Nordkorea",
         "PUR": "Puerto Rico",
         
         # Q-R
-        "QAT": "Qatar", "ROU": "Romania", "RSA": "South Africa", "RUS": "Russia",
-        "RWA": "Rwanda",
+        "QAT": "Katar", "ROU": "Rumänien", "RSA": "Südafrika", "RUS": "Russland",
+        "RWA": "Ruanda",
         
         # S
-        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychelles", "SGP": "Singapore",
-        "SKN": "Saint Kitts and Nevis", "SLE": "Sierra Leone", "SLO": "Slovenia",
-        "SMR": "San Marino", "SOL": "Solomon Islands", "SOM": "Somalia", "SRB": "Serbia",
-        "SRI": "Sri Lanka", "SSD": "South Sudan", "STP": "São Tomé and Príncipe",
-        "SUD": "Sudan", "SUI": "Switzerland", "SUR": "Suriname", "SVK": "Slovakia",
-        "SWE": "Sweden", "SWZ": "Eswatini", "SYR": "Syria",
+        "SAM": "Samoa", "SEN": "Senegal", "SEY": "Seychellen", "SGP": "Singapur",
+        "SKN": "St. Kitts und Nevis", "SLE": "Sierra Leone", "SLO": "Slowenien",
+        "SMR": "San Marino", "SOL": "Salomonen", "SOM": "Somalia", "SRB": "Serbien",
+        "SRI": "Sri Lanka", "SSD": "Südsudan", "STP": "São Tomé und Príncipe",
+        "SUD": "Sudan", "SUI": "Schweiz", "SUR": "Suriname", "SVK": "Slowakei",
+        "SWE": "Schweden", "SWZ": "Eswatini", "SYR": "Syrien",
         
         # T
-        "TAN": "Tanzania", "TCA": "Turks and Caicos Islands", "TGA": "Tonga",
-        "THA": "Thailand", "TJK": "Tajikistan", "TKM": "Turkmenistan",
-        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad and Tobago",
-        "TUN": "Tunisia", "TUR": "Turkey", "TUV": "Tuvalu",
+        "TAN": "Tansania", "TCA": "Turks- und Caicosinseln", "TGA": "Tonga",
+        "THA": "Thailand", "TJK": "Tadschikistan", "TKM": "Turkmenistan",
+        "TLS": "Timor-Leste", "TOG": "Togo", "TPE": "Taiwan", "TTO": "Trinidad und Tobago",
+        "TUN": "Tunesien", "TUR": "Türkei", "TUV": "Tuvalu",
         
         # U-V
-        "UAE": "United Arab Emirates", "UGA": "Uganda", "UKR": "Ukraine",
-        "URU": "Uruguay", "USA": "USA", "UZB": "Uzbekistan", "VAN": "Vanuatu",
-        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "Saint Vincent and the Grenadines",
+        "UAE": "Vereinigte Arabische Emirate", "UGA": "Uganda", "UKR": "Ukraine",
+        "URU": "Uruguay", "USA": "USA", "UZB": "Usbekistan", "VAN": "Vanuatu",
+        "VEN": "Venezuela", "VIE": "Vietnam", "VIN": "St. Vincent und die Grenadinen",
         
         # Y-Z
-        "YEM": "Yemen", "ZAM": "Zambia", "ZIM": "Zimbabwe",
+        "YEM": "Jemen", "ZAM": "Sambia", "ZIM": "Simbabwe",
         
         # Backwards compatibility - 2-letter codes
-        "GB": "Great Britain", "DE": "Germany", "NL": "Netherlands", "CH": "Switzerland",
-        "DK": "Denmark", "AT": "Austria", "BE": "Belgium", "FR": "France",
-        "IT": "Italy", "ES": "Spain", "SE": "Sweden", "NO": "Norway",
-        "PL": "Poland", "CZ": "Czech Republic", "HU": "Hungary", "RO": "Romania",
-        "IE": "Ireland", "PT": "Portugal",
+        "GB": "Großbritannien", "DE": "Deutschland", "NL": "Niederlande", "CH": "Schweiz",
+        "DK": "Dänemark", "AT": "Österreich", "BE": "Belgien", "FR": "Frankreich",
+        "IT": "Italien", "ES": "Spanien", "SE": "Schweden", "NO": "Norwegen",
+        "PL": "Polen", "CZ": "Tschechien", "HU": "Ungarn", "RO": "Rumänien",
+        "IE": "Irland", "PT": "Portugal",
         
         # Alternative spellings
-        "DZA": "Algeria",  # ISO code for Algeria
+        "DZA": "Algerien",  # ISO code for Algeria
     }
     
     return names.get(ioc_code.upper(), ioc_code)
@@ -209,6 +217,10 @@ def find_flag_image(nat_code):
     return None
 
 
+def translate_sex(sex):
+    sex_map = {"STALLION": "Hengst", "GELDING": "Wallach", "MARE": "Stute"}
+    return sex_map.get(str(sex).upper() if sex else "", sex or "")
+
 def format_time(iso):
     if not iso:
         return ""
@@ -218,13 +230,14 @@ def format_time(iso):
     except:
         return str(iso).split("T")[-1][:8] if "T" in str(iso) else str(iso)
 
-def format_datetime_english(iso):
-    """English: Wednesday, March 19, 2025 14:00"""
+def format_datetime_german(iso):
     if not iso:
         return ""
     try:
         dt = datetime.fromisoformat(iso.replace("Z", ""))
-        return dt.strftime("%A, %B %d, %Y %H:%M")
+        wd = WEEKDAY_MAP.get(dt.strftime("%A"), dt.strftime("%A"))
+        mo = MONTH_MAP.get(dt.strftime("%B"), dt.strftime("%B"))
+        return f"{wd}, {dt.day}. {mo} {dt.year} {dt.strftime('%H:%M')} Uhr"
     except:
         return str(iso)
 
@@ -235,11 +248,11 @@ def format_pause_text(total_seconds, info):
     if secs >= 3600:
         h = secs // 3600
         m = (secs % 3600) // 60
-        return f"Break ({h} h {m:02d} min){' - ' + info if info else ''}"
+        return f"Pause ({h} Std. {m:02d} Min.){' - ' + info if info else ''}"
     elif secs >= 60:
-        return f"Break ({secs//60} min){' - ' + info if info else ''}"
+        return f"Pause ({secs//60} Min.){' - ' + info if info else ''}"
     else:
-        return f"Break ({secs} Sek.){' - ' + info if info else ''}"
+        return f"Pause ({secs} Sek.){' - ' + info if info else ''}"
 
 def get_sponsor_bar_height():
     """Berechnet die Höhe der Sponsorenleiste basierend auf dem Seitenverhältnis"""
@@ -311,17 +324,11 @@ class BannerCanvas(canvas.Canvas):
         sponsor_path = "logos/sponsorenleiste.png"
         if os.path.exists(sponsor_path):
             try:
-                img_width = 190*mm
-                img_height = self.sponsor_height
-                x = (A4[0] - img_width) / 2
-                y = 4*mm
-                self.drawImage(sponsor_path, x, y, width=img_width, height=img_height, 
-                              preserveAspectRatio=True, mask='auto')
+                self.drawImage(sponsor_path, (A4[0] - 190*mm) / 2, 4*mm, width=190*mm, height=self.sponsor_height, preserveAspectRatio=True, mask='auto')
             except:
                 pass
 
 def render(starterlist, filename, logo_max_width_cm=5.0):
-    # Druckoptionen auslesen
     print_options = starterlist.get("printOptions", {})
     sponsor_top = print_options.get("sponsor_top", False)
     sponsor_bottom = print_options.get("sponsor_bottom", False)
@@ -339,23 +346,19 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     if needs_custom_margins:
         spacing_top_cm = starterlist.get("spacingTopCm", 3.0)
         spacing_bottom_cm = starterlist.get("spacingBottomCm", 2.0)
-        
         if show_sponsor_bar:
             sponsor_height = get_sponsor_bar_height()
             min_bottom_mm = (4*mm + sponsor_height + 1*mm) / mm
         else:
             min_bottom_mm = 10
-        
         top_margin_front = (spacing_top_cm * 10) if sponsor_top or not show_header else 0.5 * 10
         top_margin_back = 0.5 * 10
-        
         if sponsor_bottom or not show_header:
             bottom_margin_front = max(spacing_bottom_cm * 10, min_bottom_mm)
         else:
             bottom_margin_front = min_bottom_mm
         # Sponsorenleiste erscheint auf ALLEN Seiten (FooterCanvas) -> gleicher Mindestabstand ueberall
         bottom_margin_back = min_bottom_mm
-
         if single_sided:
             from reportlab.platypus import BaseDocTemplate
             class CustomDocTemplate(BaseDocTemplate):
@@ -385,19 +388,14 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                         self.pageTemplate = self.pageTemplates[1]  # Back
                     BaseDocTemplate.handle_pageBegin(self)
             doc = CustomDocTemplate(filename, pagesize=A4, rightMargin=0, leftMargin=0, topMargin=0, bottomMargin=0)
-        
         page_width = A4[0] - 20*mm
     else:
         sponsor_height = get_sponsor_bar_height() if show_sponsor_bar else 0
-        footer_space = 4*mm
-        margin_above_sponsor = 1*mm
-        bottom_margin = footer_space + sponsor_height + margin_above_sponsor if show_sponsor_bar else 8*mm
+        bottom_margin = 4*mm + sponsor_height + 1*mm if show_sponsor_bar else 8*mm
         doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=10*mm, leftMargin=10*mm, topMargin=5*mm, bottomMargin=bottom_margin)
         page_width = A4[0] - doc.leftMargin - doc.rightMargin
     
     elements = []
-    
-    # Banner-Spacer nur wenn Banner angezeigt wird
     has_banner = False
     if show_banner:
         banner_path = os.path.join("logos", "banner.png")
@@ -423,9 +421,9 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     
     # Styles
     style_title = ParagraphStyle('Title', fontSize=14, leading=16, fontName='Helvetica-Bold', spaceAfter=2, alignment=TA_LEFT)
-    style_comp = ParagraphStyle('Comp', fontSize=11, leading=13, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)  # Nicht mehr Bold!
-    style_info = ParagraphStyle('Info', fontSize=10, leading=12, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)  # Kleiner für informationText
-    style_sub = ParagraphStyle('Sub', fontSize=10, leading=12, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)
+    style_comp = ParagraphStyle('Comp', fontSize=11, leading=13, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)  # Nicht mehr Bold, mit Abstand!
+    style_info = ParagraphStyle('Info', fontSize=10, leading=12, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)  # Nicht mehr BOLD, mit Abstand!
+    style_sub = ParagraphStyle('Sub', fontSize=10, leading=12, fontName='Helvetica', spaceAfter=4, alignment=TA_LEFT)  # Gleicher Abstand wie comp/info
     style_hdr = ParagraphStyle('Hdr', fontSize=9, leading=11, fontName='Helvetica-Bold', alignment=TA_CENTER, textColor=colors.white)
     style_hdr_left = ParagraphStyle('HdrLeft', fontSize=9, leading=11, fontName='Helvetica-Bold', alignment=TA_LEFT, textColor=colors.white)
     style_pos = ParagraphStyle('Pos', fontSize=8, leading=10, fontName='Helvetica', alignment=TA_CENTER)
@@ -454,12 +452,12 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         div_text = ""
         try:
             if division is not None and str(division) != "" and int(division) > 0:
-                div_text = f"{int(division)}. Div. "
+                div_text = f"{int(division)}. Abt. "
         except:
             div_text = f"{division} " if division else ""
         
         if comp_no or comp_title_text:
-            comp_line = f"Competition {comp_no}"
+            comp_line = f"Prüfung {comp_no}"
             if div_text:
                 comp_line += f" - {div_text}{comp_title_text}"
             elif comp_title_text:
@@ -475,12 +473,11 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         if subtitle:
             header_parts.append(Paragraph(subtitle, style_sub))
     
-    # Datum/Zeit/Ort - immer anzeigen
+    # Datum/Zeit/Ort
     location = starterlist.get("competitionLocation", "") or starterlist.get("location", "")
     start_raw = None
     division_num = starterlist.get('divisionNumber')
     divisions = starterlist.get('divisions', [])
-    
     if divisions and division_num is not None:
         try:
             div_num = int(division_num)
@@ -497,12 +494,11 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         division_start = first_division.get("start")
         if division_start:
             start_raw = division_start
-    
     if not start_raw:
         start_raw = starterlist.get("start")
     
     if start_raw:
-        date_line = format_datetime_english(start_raw)
+        date_line = format_datetime_german(start_raw)
         if location:
             date_line = f"{date_line} - {location}"
         date_line_text = date_line
@@ -518,7 +514,6 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 scale = min(max_size / logo.drawWidth, max_size / logo.drawHeight)
                 logo.drawWidth = logo.drawWidth * scale
                 logo.drawHeight = logo.drawHeight * scale
-            
             logo_col_width = max(logo.drawWidth + 5*mm, 35*mm)
             text_col_width = page_width - logo_col_width
             header_table_data = [[header_parts, logo]]
@@ -537,7 +532,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         for p in header_parts:
             elements.append(p)
     
-    # Jury
+    # Richter als separate Zeile
     judges = starterlist.get("judges", [])
     if judges:
         pos_map = {0: "E", 1: "H", 2: "C", 3: "M", 4: "B"}
@@ -553,30 +548,34 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 if pos_label not in judges_by_pos:
                     judges_by_pos[pos_label] = []
                 judges_by_pos[pos_label].append(name)
-        
         jury_parts = []
+        displayed_positions = [p for p in ["E", "H", "C", "M", "B"] if p in judges_by_pos]
+        only_c = len(displayed_positions) == 1 and displayed_positions[0] == "C"
         for p in ["E", "H", "C", "M", "B"]:
             if p in judges_by_pos:
                 names = ' & '.join(judges_by_pos[p])
-                jury_parts.append(names)
-        
+                if only_c:
+                    jury_parts.append(names)
+                else:
+                    jury_parts.append(names)
         if jury_parts:
-            jury_para = Paragraph(f"<b>Jury:</b> {' '.join(jury_parts)}", style_sub)
-            jury_table = Table([[jury_para]], colWidths=[page_width])
-            jury_table.setStyle(TableStyle([
+            judges_para = Paragraph(f"<b>Richter:</b> {' '.join(jury_parts)}", style_sub)
+            judges_table = Table([[judges_para]], colWidths=[page_width])
+            judges_table.setStyle(TableStyle([
                 ('LEFTPADDING', (0,0), (-1,-1), 6),
                 ('RIGHTPADDING', (0,0), (-1,-1), 0),
                 ('TOPPADDING', (0,0), (-1,-1), 0),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 0),
             ]))
-            elements.append(jury_table)
+            elements.append(judges_table)
     
+    # Starterliste + Datum in einer Zeile
     elements.append(Spacer(1, 1*mm))
     style_date_right = ParagraphStyle('DateRight', fontSize=10, leading=12, fontName='Helvetica-Bold', spaceAfter=0, alignment=TA_RIGHT)
-    starting_order_left = Paragraph("<b>Starting Order</b>", style_comp)
+    starterliste_left = Paragraph("<b>Starterliste</b>", style_comp)
     if date_line_text:
         date_right = Paragraph(f"<b>{date_line_text}</b>", style_date_right)
-        so_table = Table([[starting_order_left, date_right]], colWidths=[page_width * 0.5, page_width * 0.5])
+        so_table = Table([[starterliste_left, date_right]], colWidths=[page_width * 0.5, page_width * 0.5])
         so_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
             ('ALIGN', (0,0), (0,0), 'LEFT'),
@@ -586,9 +585,8 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         ]))
         elements.append(so_table)
     else:
-        elements.append(starting_order_left)
+        elements.append(starterliste_left)
     elements.append(Spacer(1, 2*mm))
-    
     # Tabelle - wie pdf_abstammung_logo
     starters = starterlist.get("starters", [])
     breaks = starterlist.get("breaks", [])
@@ -603,17 +601,16 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     data_texts = []
     meta = []
     
-    # Header
-    data_texts.append(["#", "CNO", "Horse", "Athlete", "Nat."])
+    # Header (ohne Zeit-Spalte)
+    data_texts.append(["#", "KNR", "Pferd", "Reiter", "Nat.", "Punkte", "Zeit"])
     meta.append({"type": "header"})
-
+    
     # Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
     if 0 in breaks_map:
         for br in breaks_map[0]:
             pause_text = format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-            data_texts.append([pause_text, "", "", "", ""])  # 5 Spalten
+            data_texts.append([pause_text, "", "", "", "", "", ""])
             meta.append({"type": "pause"})
-
     
     # Gruppierungslogik (wie in pdf_abstammung_logo)
     current_group = None
@@ -626,18 +623,23 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         # Nur wenn groupNumber existiert und > 0
         if starter_group is not None and starter_group > 0 and starter_group != current_group:
             # Neue Gruppe erkannt - Gruppen-Header hinzufügen
-            group_text = f"Division {starter_group}"
-            data_texts.append([group_text, "", "", "", ""])
+            group_text = f"Abteilung {starter_group}"
+            data_texts.append([group_text, "", "", "", ""])  # 5 Spalten
             meta.append({"type": "group"})
             
             current_group = starter_group
             group_start_time_shown = False  # Reset für neue Gruppe
         
-        nr = str(s.get("startNumber", ""))
-        hors_concours = bool(s.get("horsConcours", False))  # Außer Konkurrenz  # Convert to string immediately!
+        nr = str(s.get("startNumber", ""))  # Convert to string immediately!
+        hors_concours = bool(s.get("horsConcours", False))  # Außer Konkurrenz prüfen
         
-        # Time column removed - no longer needed
-        time_str = ""  # Time column removed
+        # Zeit nur beim ersten Starter pro Gruppe zeigen, oder wenn keine Gruppierung
+        if starter_group is None or starter_group == 0 or not group_start_time_shown:
+            time_str = format_time(s.get("startTime", ""))
+            if starter_group is not None and starter_group > 0:
+                group_start_time_shown = True  # Markiere Zeit als gezeigt
+        else:
+            time_str = ""  # Verstecke Zeit für weitere Starter in derselben Gruppe
         
         horses = s.get("horses", [])
         horse = horses[0] if horses else {}
@@ -647,7 +649,13 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         horse_html = ""
         if horse:
             horse_name = horse.get("name", "")
-            horse_html = f"<b>{horse_name}</b>"
+            breed = horse.get("breed", "") or horse.get("studbook", "")  # breed, oder studbook als Fallback
+            
+            # Pferdename FETT, dann breed in kleinerer, normaler Schrift
+            if breed:
+                horse_html = f"<b>{horse_name}</b> - <font size=7>{breed}</font>"
+            else:
+                horse_html = f"<b>{horse_name}</b>"
             
             details = []
             breeding_season = horse.get("breedingSeason")
@@ -655,7 +663,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 try:
                     current_year = datetime.now().year
                     age = current_year - int(breeding_season)
-                    details.append(f"{age}Y")
+                    details.append(f"{age}jähr.")
                 except:
                     pass
             
@@ -665,10 +673,11 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             
             sex = horse.get("sex", "")
             if sex:
-                details.append(sex.upper() if sex else "")
+                details.append(translate_sex(sex))
             
             studbook = horse.get("studbook", "")
-            if studbook:
+            # Nur hinzufügen wenn nicht schon als breed angezeigt
+            if studbook and studbook != breed:
                 details.append(studbook)
             
             sire = horse.get("sire", "")
@@ -681,48 +690,30 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             if details:
                 horse_html += f"<br/><font size=7>{' / '.join(details)}</font>"
             
-            # Owner and Breeder compact in one line (English: O: and B:)
+            # Besitzer und Züchter kompakt in einer Zeile
             owner = horse.get("owner", "")
             breeder = horse.get("breeder", "")
             
             if owner and breeder:
-                # Both present
+                # Beide vorhanden
                 if owner.strip() == breeder.strip():
-                    # Identical: "O & B: Name"
-                    horse_html += f"<br/><font size=6.5><i>O & B: {owner}</i></font>"
+                    # Identisch: "B u. Z: Name"
+                    horse_html += f"<br/><font size=6.5><i>B u. Z: {owner}</i></font>"
                 else:
-                    # Different: "O: Name / B: Name"
-                    horse_html += f"<br/><font size=6.5><i>O: {owner} / B: {breeder}</i></font>"
+                    # Unterschiedlich: "B: Name / Z: Name"
+                    horse_html += f"<br/><font size=6.5><i>B: {owner} / Z: {breeder}</i></font>"
             elif owner:
-                # Only Owner
-                horse_html += f"<br/><font size=6.5><i>O: {owner}</i></font>"
+                # Nur Besitzer
+                horse_html += f"<br/><font size=6.5><i>B: {owner}</i></font>"
             elif breeder:
-                # Only Breeder
-                horse_html += f"<br/><font size=6.5><i>B: {breeder}</i></font>"
+                # Nur Züchter
+                horse_html += f"<br/><font size=6.5><i>Z: {breeder}</i></font>"
         
-        # Reiter mit Club/Land
+        # Reiter (nur Name, kein Verein/Land)
         athlete = s.get("athlete", {})
-        athlete_name = str(athlete.get("name", ""))  # Ensure string
-        club = athlete.get("club", "")
+        athlete_name = str(athlete.get("name", ""))
         nationality = athlete.get("nation", "")
-        
-        # Reiter-HTML: Name + Club/Land darunter
         athlete_html = f"<b>{athlete_name}</b>" if athlete_name else ""
-        
-        # New logic: Show country for foreigners only if club is empty OR "Gastlizenz GER"
-        if nationality and nationality.upper() != "GER":
-            # Foreigner
-            if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
-                # No club or guest license → Show country name
-                country_full = get_country_name_english(nationality)
-                if country_full:
-                    athlete_html += f"<br/><font size=7>{country_full}</font>"
-            else:
-                # Has a club (not guest license) → Show club
-                athlete_html += f"<br/><font size=7>{club}</font>"
-        elif club:
-            # German: Show club
-            athlete_html += f"<br/><font size=7>{club}</font>"
         
         # Nationalität mit Flagge UND Kürzel
         nat_code_iso = get_nationality_code(nationality) if nationality else ""  # ISO für Mapping
@@ -765,7 +756,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         if hors_concours:
             nr_display = f"{nr}<br/><font size=7>AK</font>"
         
-        data_texts.append([nr_display, cno, horse_html, athlete_html, nat_cell])
+        data_texts.append([nr_display, cno, horse_html, athlete_html, nat_cell, "", ""])
         withdrawn_flag = bool(s.get("withdrawn", False))
         meta.append({"type": "starter", "withdrawn": withdrawn_flag, "horsConcours": hors_concours})
         
@@ -775,14 +766,16 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             if cur in breaks_map:
                 for br in breaks_map[cur]:
                     pause_text = format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-                    data_texts.append([pause_text, "", "", "", ""])
+                    data_texts.append([pause_text, "", "", "", "", "", ""])
                     meta.append({"type": "pause"})
         except:
             pass
     
     # Spaltenbreiten
-    # Spaltenbreiten (page_width wurde oben berechnet)
-    col_widths = [10*mm, 12*mm, page_width - 10*mm - 12*mm - 60*mm - 13*mm, 60*mm, 13*mm]
+    # 7 Spalten: #, KNR, Pferd, Reiter, Nat., Points, Time
+    result_col = 15*mm
+    athlete_col = 48*mm
+    col_widths = [10*mm, 12*mm, page_width - 10*mm - 12*mm - athlete_col - 13*mm - 2*result_col, athlete_col, 13*mm, result_col, result_col]
     
     table_rows = []
     for i, row in enumerate(data_texts):
@@ -791,23 +784,45 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         
         m = meta[i]
         if m["type"] == "header":
+            horse_col_w = col_widths[2] + col_widths[3]
+            horse_name_w = horse_col_w * 0.55
+            rider_name_w = horse_col_w * 0.45
+            hdr_inner = Table(
+                [[Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr_left)]],
+                colWidths=[horse_name_w, rider_name_w]
+            )
+            hdr_inner.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
+            ]))
             table_rows.append([
                 Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr),
-                Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr_left),
-                Paragraph(row[4], style_hdr)
+                hdr_inner, Paragraph("", style_hdr),
+                Paragraph(row[4], style_hdr),
+                Paragraph(row[5], style_hdr),
+                Paragraph(row[6], style_hdr),
             ])
         elif m["type"] == "group":
-            # Abteilungs-Header (fett, grau)
+            # Abteilungs-Header (linksbündig, dunkler Hintergrund, weiße Schrift)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_group), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub),
+                Paragraph("", style_sub),
+                Paragraph("", style_sub),
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub),
+                Paragraph("", style_sub),
+                Paragraph("", style_sub),
             ])
         else:
             withdrawn = m.get("withdrawn", False)
@@ -817,7 +832,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 return Paragraph(f"<strike>{text}</strike>" if withdrawn else text, s)
             
             # Nat-Spalte: Wenn Table-Objekt (Flagge+Code) direkt nutzen, sonst Paragraph
-            nat_value = row[4]
+            nat_value = row[4]  # Jetzt Index 4 statt 5
             if isinstance(nat_value, Table):
                 nat_cell_final = nat_value
             elif isinstance(nat_value, Image):
@@ -825,12 +840,53 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             else:
                 nat_cell_final = Paragraph(str(nat_value), style_pos)
             
+            horse_text = row[2]
+            rider_text = row[3]
+            horse_col_w = col_widths[2] + col_widths[3]
+            horse_name_w = horse_col_w * 0.55
+            rider_name_w = horse_col_w * 0.45
+            if withdrawn:
+                parts = horse_text.split("<br/>", 1)
+                h_name = f"<strike>{parts[0]}</strike>"
+                h_rest = f"<strike>{parts[1]}</strike>" if len(parts) > 1 else ""
+                r_display = f"<strike>{rider_text}</strike>" if rider_text else ""
+            else:
+                parts = horse_text.split("<br/>", 1)
+                h_name = parts[0]
+                h_rest = parts[1] if len(parts) > 1 else ""
+                r_display = rider_text
+            name_rider_t = Table(
+                [[Paragraph(h_name, style_horse), Paragraph(r_display, style_rider)]],
+                colWidths=[horse_name_w, rider_name_w]
+            )
+            name_rider_t.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ]))
+            if h_rest:
+                outer_data = [[name_rider_t], [Paragraph(h_rest, style_horse)]]
+            else:
+                outer_data = [[name_rider_t]]
+            outer_t = Table(outer_data, colWidths=[horse_col_w])
+            outer_t.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
             table_rows.append([
                 maybe_strike(row[0], style_pos),
                 maybe_strike(row[1], style_pos),
-                maybe_strike(row[2], style_horse),
-                maybe_strike(row[3], style_rider),
-                nat_cell_final
+                outer_t,
+                Paragraph("", style_pos),
+                nat_cell_final,
+                Paragraph("", style_pos),
+                Paragraph("", style_pos),
             ])
     
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
@@ -841,10 +897,9 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("ALIGN", (0,0), (1,-1), "CENTER"),
         ("ALIGN", (2,0), (3,-1), "LEFT"),
-        ("ALIGN", (4,0), (4,-1), "CENTER"),
-        # Kompaktere Zeilen: Reduzierte Paddings
-        ("TOPPADDING", (0,0), (-1,-1), 2),      # Standard war 6
-        ("BOTTOMPADDING", (0,0), (-1,-1), 2),   # Standard war 6,
+        ("ALIGN", (4,0), (6,-1), "CENTER"),
+        ("LINEBEFORE", (5,0), (6,-1), 0.5, colors.black),
+        ("LINEAFTER", (6,0), (6,-1), 0.5, colors.black),
     ])
     
     # SPAN + Zebra - mit Gruppen-Logik!
@@ -853,21 +908,22 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         if ri < len(meta):
             m = meta[ri]
             if m.get("type") == "group":
-                # Abteilungs-Header: SPAN über alle Spalten, grauer Hintergrund
-                ts.add("SPAN", (0,ri), (4,ri))
-                ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#404040'))
+                # Abteilungs-Header: SPAN über alle Spalten, dunkler Hintergrund wie Header
+                ts.add("SPAN", (0,ri), (6,ri))
+                ts.add("BACKGROUND", (0,ri), (6,ri), colors.HexColor('#404040'))
                 # Counter zurücksetzen für neue Abteilung
                 starter_row_count = 0
             elif m.get("type") == "starter":
+                ts.add("SPAN", (2,ri), (3,ri))
                 # Zebra: ungerade Starter sind grau (1, 3, 5, ...)
                 if starter_row_count % 2 == 1:
-                    ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#E8E8E8'))
+                    ts.add("BACKGROUND", (0,ri), (6,ri), colors.HexColor('#E8E8E8'))
                 starter_row_count += 1
             elif m.get("type") == "pause":
-                ts.add("SPAN", (0,ri), (4,ri))
+                ts.add("SPAN", (0,ri), (6,ri))
                 prev_was_gray = (starter_row_count - 1) % 2 == 1
                 if not prev_was_gray:  # Vorherige war weiß → Pause grau
-                    ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#E8E8E8'))
+                    ts.add("BACKGROUND", (0,ri), (6,ri), colors.HexColor('#E8E8E8'))
                 # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
                 starter_row_count -= 1
     
@@ -879,4 +935,4 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         doc.build(elements, canvasmaker=BannerCanvas)
     else:
         doc.build(elements)
-    print(f"PDF INT: {filename}")
+    print(f"PDF NAT: {filename}")

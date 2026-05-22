@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# templates/pdf/pdf_int_spr_zucht_komp.py - International Springen Zucht kompakt - mit printOptions-Unterstützung
+# templates/pdf/pdf_int_spr_2ph.py - International Springen Zwei-Phasen - mit printOptions-Unterstützung
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
@@ -603,15 +603,15 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     data_texts = []
     meta = []
     
-    # Header
-    data_texts.append(["#", "CNO", "Horse", "Athlete", "Nat."])
+    # Header (8 Spalten: #, CNO, Horse, Athlete, Nat., Phase 1, Phase 2, Total)
+    data_texts.append(["#", "CNO", "Horse", "Athlete", "Nat.", "Phase 1", "Phase 2", "Total"])
     meta.append({"type": "header"})
 
     # Prüfe ob es eine Pause VOR dem ersten Starter gibt (afterNumberInCompetition=0)
     if 0 in breaks_map:
         for br in breaks_map[0]:
             pause_text = format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-            data_texts.append([pause_text, "", "", "", ""])  # 5 Spalten
+            data_texts.append([pause_text, "", "", "", "", "", "", ""])  # 8 Spalten
             meta.append({"type": "pause"})
 
     
@@ -700,29 +700,11 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 # Only Breeder
                 horse_html += f"<br/><font size=6.5><i>B: {breeder}</i></font>"
         
-        # Reiter mit Club/Land
+        # Reiter (nur Name, kein Club/Land)
         athlete = s.get("athlete", {})
-        athlete_name = str(athlete.get("name", ""))  # Ensure string
-        club = athlete.get("club", "")
+        athlete_name = str(athlete.get("name", ""))
         nationality = athlete.get("nation", "")
-        
-        # Reiter-HTML: Name + Club/Land darunter
         athlete_html = f"<b>{athlete_name}</b>" if athlete_name else ""
-        
-        # New logic: Show country for foreigners only if club is empty OR "Gastlizenz GER"
-        if nationality and nationality.upper() != "GER":
-            # Foreigner
-            if not club or club.strip() == "" or club.strip().upper() == "GASTLIZENZ GER":
-                # No club or guest license → Show country name
-                country_full = get_country_name_english(nationality)
-                if country_full:
-                    athlete_html += f"<br/><font size=7>{country_full}</font>"
-            else:
-                # Has a club (not guest license) → Show club
-                athlete_html += f"<br/><font size=7>{club}</font>"
-        elif club:
-            # German: Show club
-            athlete_html += f"<br/><font size=7>{club}</font>"
         
         # Nationalität mit Flagge UND Kürzel
         nat_code_iso = get_nationality_code(nationality) if nationality else ""  # ISO für Mapping
@@ -765,7 +747,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         if hors_concours:
             nr_display = f"{nr}<br/><font size=7>AK</font>"
         
-        data_texts.append([nr_display, cno, horse_html, athlete_html, nat_cell])
+        data_texts.append([nr_display, cno, horse_html, athlete_html, nat_cell, "", "", ""])
         withdrawn_flag = bool(s.get("withdrawn", False))
         meta.append({"type": "starter", "withdrawn": withdrawn_flag, "horsConcours": hors_concours})
         
@@ -775,14 +757,17 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             if cur in breaks_map:
                 for br in breaks_map[cur]:
                     pause_text = format_pause_text(br.get("totalSeconds", 0), br.get("informationText", ""))
-                    data_texts.append([pause_text, "", "", "", ""])
+                    data_texts.append([pause_text, "", "", "", "", "", "", ""])
                     meta.append({"type": "pause"})
         except:
             pass
     
     # Spaltenbreiten
     # Spaltenbreiten (page_width wurde oben berechnet)
-    col_widths = [10*mm, 12*mm, page_width - 10*mm - 12*mm - 60*mm - 13*mm, 60*mm, 13*mm]
+    # 8 Spalten: #, CNO, Horse, Athlete, Nat., Phase1, Phase2, Total
+    result_col = 16*mm
+    athlete_col = 45*mm
+    col_widths = [10*mm, 12*mm, page_width - 10*mm - 12*mm - athlete_col - 13*mm - 3*result_col, athlete_col, 13*mm, result_col, result_col, result_col]
     
     table_rows = []
     for i, row in enumerate(data_texts):
@@ -791,23 +776,43 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         
         m = meta[i]
         if m["type"] == "header":
+            # Horse+Athlete Header: gleiche Mini-Tabelle wie Starter-Zeilen
+            horse_col_w = col_widths[2] + col_widths[3]
+            horse_name_w = horse_col_w * 0.55
+            rider_name_w = horse_col_w * 0.45
+            hdr_inner = Table(
+                [[Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr_left)]],
+                colWidths=[horse_name_w, rider_name_w]
+            )
+            hdr_inner.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
+            ]))
             table_rows.append([
                 Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr),
-                Paragraph(row[2], style_hdr_left), Paragraph(row[3], style_hdr_left),
-                Paragraph(row[4], style_hdr)
+                hdr_inner, Paragraph("", style_hdr),
+                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr),
+                Paragraph(row[6], style_hdr), Paragraph(row[7], style_hdr)
             ])
         elif m["type"] == "group":
             # Abteilungs-Header (fett, grau)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_group), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub), Paragraph("", style_sub),
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub), Paragraph("", style_sub),
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         else:
             withdrawn = m.get("withdrawn", False)
@@ -825,23 +830,75 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             else:
                 nat_cell_final = Paragraph(str(nat_value), style_pos)
             
+            # Horse+Rider Zelle: feste Spaltenaufteilung, beide linksbündig
+            # Pferdename in linker Hälfte, Reiter in rechter Hälfte – feste Position
+            horse_text = row[2]
+            rider_text = row[3]
+            horse_col_w = col_widths[2] + col_widths[3]
+            horse_name_w = horse_col_w * 0.55  # Pferd immer links, feste Breite
+            rider_name_w = horse_col_w * 0.45  # Reiter immer ab dieser Position
+
+            if withdrawn:
+                h_display = f"<strike>{horse_text}</strike>"
+                r_display = f"<strike>{rider_text}</strike>" if rider_text else ""
+            else:
+                h_display = horse_text
+                r_display = rider_text
+
+            # Zeile 1: Pferdename | Reitername (beide TOP-LEFT)
+            # Zeile 2+: Details/Owner über volle Breite (SPAN)
+            parts = h_display.split("<br/>", 1)
+            name_part = parts[0]
+            rest_part = parts[1] if len(parts) > 1 else ""
+
+            name_rider_row = [[Paragraph(name_part, style_horse),
+                               Paragraph(r_display, style_rider)]]
+            name_rider_t = Table(name_rider_row, colWidths=[horse_name_w, rider_name_w])
+            name_rider_t.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ]))
+
+            if rest_part:
+                outer_data = [[name_rider_t], [Paragraph(rest_part, style_horse)]]
+            else:
+                outer_data = [[name_rider_t]]
+            outer_t = Table(outer_data, colWidths=[horse_col_w])
+            outer_t.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
+
             table_rows.append([
                 maybe_strike(row[0], style_pos),
                 maybe_strike(row[1], style_pos),
-                maybe_strike(row[2], style_horse),
-                maybe_strike(row[3], style_rider),
-                nat_cell_final
+                outer_t,
+                Paragraph("", style_pos),  # leer – durch SPAN überdeckt
+                nat_cell_final,
+                Paragraph("", style_pos),
+                Paragraph("", style_pos),
+                Paragraph("", style_pos)
             ])
     
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
     ts = TableStyle([
-        ("LINEBELOW", (0,0), (-1,-1), 0.5, colors.black),  # Nur horizontale Linien!
+        ("LINEBELOW", (0,0), (-1,-1), 0.5, colors.black),
+        # Vertikale Linien nur bei den 3 Ergebnisspalten
+        ("LINEBEFORE", (5,0), (7,-1), 0.5, colors.black),
+        ("LINEAFTER", (7,0), (7,-1), 0.5, colors.black),
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor('#404040')),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("ALIGN", (0,0), (1,-1), "CENTER"),
         ("ALIGN", (2,0), (3,-1), "LEFT"),
-        ("ALIGN", (4,0), (4,-1), "CENTER"),
+        ("ALIGN", (4,0), (7,-1), "CENTER"),
         # Kompaktere Zeilen: Reduzierte Paddings
         ("TOPPADDING", (0,0), (-1,-1), 2),      # Standard war 6
         ("BOTTOMPADDING", (0,0), (-1,-1), 2),   # Standard war 6,
@@ -854,20 +911,22 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             m = meta[ri]
             if m.get("type") == "group":
                 # Abteilungs-Header: SPAN über alle Spalten, grauer Hintergrund
-                ts.add("SPAN", (0,ri), (4,ri))
-                ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#404040'))
+                ts.add("SPAN", (0,ri), (7,ri))
+                ts.add("BACKGROUND", (0,ri), (7,ri), colors.HexColor('#404040'))
                 # Counter zurücksetzen für neue Abteilung
                 starter_row_count = 0
             elif m.get("type") == "starter":
+                # Horse+Athlete Spalten zusammenspannen für volle Textbreite
+                ts.add("SPAN", (2,ri), (3,ri))
                 # Zebra: ungerade Starter sind grau (1, 3, 5, ...)
                 if starter_row_count % 2 == 1:
-                    ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#E8E8E8'))
+                    ts.add("BACKGROUND", (0,ri), (7,ri), colors.HexColor('#E8E8E8'))
                 starter_row_count += 1
             elif m.get("type") == "pause":
-                ts.add("SPAN", (0,ri), (4,ri))
+                ts.add("SPAN", (0,ri), (7,ri))
                 prev_was_gray = (starter_row_count - 1) % 2 == 1
                 if not prev_was_gray:  # Vorherige war weiß → Pause grau
-                    ts.add("BACKGROUND", (0,ri), (4,ri), colors.HexColor('#E8E8E8'))
+                    ts.add("BACKGROUND", (0,ri), (7,ri), colors.HexColor('#E8E8E8'))
                 # WICHTIG: Counter um 1 zurücksetzen, damit nächste Zeile gleiche Farbe hat!
                 starter_row_count -= 1
     
