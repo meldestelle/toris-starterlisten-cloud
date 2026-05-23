@@ -890,6 +890,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
     ts = TableStyle([
         ("LINEBELOW", (0,0), (-1,-1), 0.5, colors.black),
+        ("LINEBEFORE", (0,0), (0,-1), 0.5, colors.black),   # links außen
         # Vertikale Linien nur bei den 3 Ergebnisspalten
         ("LINEBEFORE", (5,0), (7,-1), 0.5, colors.black),
         ("LINEAFTER", (7,0), (7,-1), 0.5, colors.black),

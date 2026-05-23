@@ -883,7 +883,6 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
                 Paragraph("", style_pos),
                 nat_cell_final,
                 Paragraph("", style_pos),
-                Paragraph("", style_pos),
             ])
     
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
@@ -895,6 +894,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         ("ALIGN", (0,0), (1,-1), "CENTER"),
         ("ALIGN", (2,0), (3,-1), "LEFT"),
         ("ALIGN", (4,0), (5,-1), "CENTER"),
+        ("LINEBEFORE", (0,0), (0,-1), 0.5, colors.black),   # links außen
         ("LINEBEFORE", (5,0), (5,-1), 0.5, colors.black),
         ("LINEAFTER", (5,0), (5,-1), 0.5, colors.black),
     ])

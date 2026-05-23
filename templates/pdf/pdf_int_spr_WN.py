@@ -796,23 +796,20 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
             table_rows.append([
                 Paragraph(row[0], style_hdr), Paragraph(row[1], style_hdr),
                 hdr_inner, Paragraph("", style_hdr),
-                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr),
-                Paragraph(row[6], style_hdr)
+                Paragraph(row[4], style_hdr), Paragraph(row[5], style_hdr)
             ])
         elif m["type"] == "group":
             # Abteilungs-Header (fett, grau)
             table_rows.append([
                 Paragraph(f"<b>{row[0]}</b>", style_group), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         elif m["type"] == "pause":
             table_rows.append([
                 Paragraph(row[0], style_pause), Paragraph("", style_sub),
                 Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub), Paragraph("", style_sub),
-                Paragraph("", style_sub)
+                Paragraph("", style_sub), Paragraph("", style_sub)
             ])
         else:
             withdrawn = m.get("withdrawn", False)
@@ -888,9 +885,11 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
     t = Table(table_rows, colWidths=col_widths, repeatRows=1)
     ts = TableStyle([
         ("LINEBELOW", (0,0), (-1,-1), 0.5, colors.black),
-        # Vertikale Linien nur bei den 2 Ergebnisspalten
+        # Links außen + Ergebnisspalte einrahmen
+        ("LINEBEFORE", (0,0), (0,-1), 0.5, colors.black),   # links außen
+        # Vertikale Linien bei der Ergebnisspalte
         ("LINEBEFORE", (5,0), (5,-1), 0.5, colors.black),
-        ("LINEAFTER", (5,0), (5,-1), 0.5, colors.black),
+        ("LINEAFTER", (5,0), (5,-1), 0.5, colors.black),    # rechts außen
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor('#404040')),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("VALIGN", (0,0), (-1,-1), "TOP"),

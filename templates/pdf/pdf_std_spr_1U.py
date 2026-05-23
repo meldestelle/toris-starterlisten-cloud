@@ -898,6 +898,7 @@ def render(starterlist, filename, logo_max_width_cm=5.0):
         ("ALIGN", (0,0), (1,-1), "CENTER"),
         ("ALIGN", (2,0), (3,-1), "LEFT"),
         ("ALIGN", (4,0), (6,-1), "CENTER"),
+        ("LINEBEFORE", (0,0), (0,-1), 0.5, colors.black),   # links außen
         ("LINEBEFORE", (5,0), (6,-1), 0.5, colors.black),
         ("LINEAFTER", (6,0), (6,-1), 0.5, colors.black),
     ])
