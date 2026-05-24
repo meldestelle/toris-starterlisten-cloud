@@ -549,37 +549,36 @@ def fetch_competitions(api_key, show_number):
 
 def fetch_starterlist(api_key, show_number, comp_number, comp_div=None, round_number=1):
     headers = {"X-API-Key": api_key} if api_key else {}
-    params = {}
-    
-    if round_number and round_number != 1:
-        params["roundNumber"] = round_number
-    
+    params = {"roundNumber": round_number}
+
     # Mit Division
     if comp_div:
         url = f"{API_BASE}/Shows/{show_number}/Competitions/{comp_number}/{comp_div}/Starterlist"
         try:
             response = requests.get(url, headers=headers, params=params, timeout=10)
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                data = _patch_breaks(data, api_key, show_number, comp_number, comp_div, round_number)
+                return data
             elif response.status_code == 404 and round_number > 1:
-                # Test ob Runde 1 existiert
-                test_response = requests.get(url, headers=headers, timeout=10)
+                test_response = requests.get(url, headers=headers, params={"roundNumber": 1}, timeout=10)
                 if test_response.status_code == 200:
                     raise ValueError(f"Runde {round_number} existiert nicht für diese Prüfung")
         except ValueError:
             raise
         except Exception:
             pass
-    
+
     # Ohne Division (Fallback)
     url = f"{API_BASE}/Shows/{show_number}/Competitions/{comp_number}/Starterlist"
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            data = _patch_breaks(data, api_key, show_number, comp_number, None, round_number)
+            return data
         elif response.status_code == 404 and round_number > 1:
-            # Test ob Runde 1 existiert
-            test_response = requests.get(url, headers=headers, timeout=10)
+            test_response = requests.get(url, headers=headers, params={"roundNumber": 1}, timeout=10)
             if test_response.status_code == 200:
                 raise ValueError(f"Runde {round_number} existiert nicht für diese Prüfung")
         response.raise_for_status()
@@ -589,6 +588,39 @@ def fetch_starterlist(api_key, show_number, comp_number, comp_div=None, round_nu
     except Exception as e:
         st.error(f"❌ Fehler beim Laden der Starterliste: {e}")
         return None
+
+
+def _patch_breaks(data, api_key, show_number, comp_number, comp_div, round_number):
+    if round_number <= 1:
+        return data
+    breaks = data.get("breaks") or []
+    starters = data.get("starters") or []
+    if not starters:
+        return data
+    start_nums = set()
+    for s in starters:
+        nr = s.get("backNumber") or s.get("startNumber")
+        if nr is not None:
+            try:
+                start_nums.add(int(nr))
+            except (ValueError, TypeError):
+                pass
+    try:
+        headers = {"X-API-Key": api_key} if api_key else {}
+        if comp_div:
+            r1_url = f"{API_BASE}/Shows/{show_number}/Competitions/{comp_number}/{comp_div}/Starterlist"
+        else:
+            r1_url = f"{API_BASE}/Shows/{show_number}/Competitions/{comp_number}/Starterlist"
+        r1_resp = requests.get(r1_url, headers=headers, params={"roundNumber": 1}, timeout=10)
+        if r1_resp.status_code == 200:
+            r1_breaks = r1_resp.json().get("breaks") or []
+            filtered = [b for b in r1_breaks if b.get("afterNumberInCompetition") in start_nums
+                        or b.get("afterNumberInCompetition") is None]
+            if len(filtered) > len(breaks):
+                data["breaks"] = filtered
+    except Exception as e:
+        print(f"DEBUG _patch_breaks: {e}")
+    return data
 
 def fetch_competition_details(api_key, show_number, comp_number):
     try:

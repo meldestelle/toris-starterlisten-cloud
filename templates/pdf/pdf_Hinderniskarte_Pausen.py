@@ -399,6 +399,10 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     starters        = starterlist.get("starters") or []
     breaks          = starterlist.get("breaks")   or []
     breaks_by_after = {}
+    for b in breaks:
+        after_num = b.get("afterNumberInCompetition")
+        k = -1 if after_num is None else int(after_num)
+        breaks_by_after.setdefault(k, []).append(b)
 
     # Spaltenbreiten: schmale Wertungsspalten, etwas mehr für außerhalb+Hindernis
     col_rnr    = 13 * mm
@@ -437,6 +441,13 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
     meta      = [{"type": "header"}]
 
     current_group = None
+
+    # Pause vor erstem Starter (afterNumberInCompetition = 0)
+    if 0 in breaks_by_after:
+        for br in breaks_by_after[0]:
+            pause_text = _fmt_pause_text(br)
+            data_rows.append([Paragraph(pause_text, style_pause)] + [Paragraph("", style_pos)] * 9)
+            meta.append({"type": "pause"})
 
     for s in starters:
         # Abteilungs-Header
@@ -489,6 +500,17 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
         data_rows.append(row)
         meta.append({"type": "starter", "withdrawn": withdrawn})
 
+        # Pausen nach diesem Starter
+        try:
+            cur = int(back_nr) if back_nr is not None else int(start_nr)
+        except (ValueError, TypeError):
+            cur = None
+        if cur is not None and cur in breaks_by_after:
+            for br in breaks_by_after[cur]:
+                pause_text = _fmt_pause_text(br)
+                data_rows.append([Paragraph(pause_text, style_pause)] + [Paragraph("", style_pos)] * 9)
+                meta.append({"type": "pause"})
+
     # --- Tabelle ---
     t = Table(data_rows, colWidths=col_widths, repeatRows=1)
     ts = TableStyle([
@@ -508,10 +530,12 @@ def render(starterlist: dict, filename: str, logo_max_width_cm: float = 5.0):
             ts.add("SPAN",       (0, ri), (-1, ri))
             ts.add("BACKGROUND", (0, ri), (-1, ri), colors.Color(0.88, 0.88, 0.88))
             ts.add("ALIGN",      (0, ri), (-1, ri), "LEFT")
-            starter_count = 0
         elif m["type"] == "pause":
             ts.add("SPAN",  (0, ri), (-1, ri))
             ts.add("ALIGN", (0, ri), (-1, ri), "CENTER")
+            if starter_count % 2 == 1:
+                ts.add("BACKGROUND", (0, ri), (-1, ri), colors.HexColor("#f0f0f0"))
+            starter_count += 1
         elif m["type"] == "starter":
             if starter_count % 2 == 1:
                 ts.add("BACKGROUND", (0, ri), (-1, ri), colors.HexColor("#f0f0f0"))
