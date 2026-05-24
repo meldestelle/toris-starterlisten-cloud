@@ -815,7 +815,7 @@ with st.sidebar:
             st.info(f"ℹ️ {len(st.session_state.knr_mapping)} Kopfnummern aktiv")
 
     # --- KNr.-Spalte (nur für Hinderniskarte) ---
-    if st.session_state.get("pdf_template") == "pdf_Hinderniskarte":
+    if (st.session_state.get("pdf_template") or "").startswith("pdf_Hinderniskarte"):
         st.markdown("---")
         st.session_state.use_knr_column = st.checkbox(
             "KNr. statt R-Nr. anzeigen",
