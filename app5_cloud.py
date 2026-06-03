@@ -134,6 +134,10 @@ if "use_knr_column" not in st.session_state:
     st.session_state.use_knr_column = False
 if "knr_mapping" not in st.session_state:
     st.session_state.knr_mapping = {}
+if "use_meisterschaft" not in st.session_state:
+    st.session_state.use_meisterschaft = False
+if "meisterschaft_data" not in st.session_state:
+    st.session_state.meisterschaft_data = {}
 
 
 def apply_knr_mapping(starterlist: dict, mapping: dict) -> dict:
