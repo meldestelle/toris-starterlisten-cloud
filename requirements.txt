@@ -3,3 +3,5 @@ reportlab
 requests
 Pillow
 python-docx
+openpyxl
+pandas
