@@ -814,8 +814,55 @@ with st.sidebar:
         elif st.session_state.knr_mapping:
             st.info(f"ℹ️ {len(st.session_state.knr_mapping)} Kopfnummern aktiv")
 
+    # --- Meisterschaft (nur für Templates mit "Meisterschaft" im Namen) ---
+    if "meisterschaft" in (st.session_state.get("pdf_template") or "").lower():
+        st.markdown("---")
+        st.session_state.use_meisterschaft = st.checkbox(
+            "🏆 Meisterschaft",
+            value=st.session_state.use_meisterschaft,
+            key="use_meisterschaft_cb"
+        )
+        if st.session_state.use_meisterschaft:
+            meister_file = st.file_uploader(
+                "Meisterschaftsdatei laden (.xlsx)",
+                type=["xlsx"],
+                key="meisterschaft_uploader"
+            )
+            if meister_file is not None:
+                try:
+                    import pandas as _pd
+                    df_ms = _pd.read_excel(meister_file, header=None)
+                    header_row = None
+                    for idx, row in df_ms.iterrows():
+                        row_vals = [str(v).strip() for v in row.values]
+                        if any("Summe" in v for v in row_vals):
+                            header_row = idx
+                            break
+                    if header_row is None:
+                        st.error("❌ Keine Spalte 'Summe' in der Datei gefunden!")
+                    else:
+                        df_ms.columns = df_ms.iloc[header_row]
+                        df_ms = df_ms.iloc[header_row + 1:].reset_index(drop=True)
+                        knr_col = next((c for c in df_ms.columns if str(c).strip().lower().startswith("knr")), None)
+                        summe_col = next((c for c in df_ms.columns if str(c).strip() == "Summe"), None)
+                        if knr_col is None or summe_col is None:
+                            st.error(f"❌ Spalten 'KNr' und/oder 'Summe' nicht gefunden. Gefunden: {list(df_ms.columns)}")
+                        else:
+                            ms_dict = {}
+                            for _, r in df_ms.iterrows():
+                                try:
+                                    ms_dict[str(int(float(r[knr_col])))] = float(r[summe_col])
+                                except:
+                                    pass
+                            st.session_state.meisterschaft_data = ms_dict
+                            st.success(f"✅ {len(ms_dict)} Meisterschafts-Einträge geladen")
+                except Exception as _e:
+                    st.error(f"Fehler beim Laden: {_e}")
+            elif st.session_state.meisterschaft_data:
+                st.info(f"ℹ️ {len(st.session_state.meisterschaft_data)} Meisterschafts-Einträge aktiv")
+
     # --- KNr.-Spalte (nur für Hinderniskarte) ---
-    if (st.session_state.get("pdf_template") or "").startswith("pdf_Hinderniskarte"):
+    if (st.session_state.get("pdf_template") or "").startswith("pdf_vs_"):
         st.markdown("---")
         st.session_state.use_knr_column = st.checkbox(
             "KNr. statt R-Nr. anzeigen",
@@ -1217,6 +1264,7 @@ with tab2:
                                         "show_title":       st.session_state.get("show_title", True),
                                         "show_header":      st.session_state.get("show_header", True),
                                         "use_knr_column":   st.session_state.get("use_knr_column", False),
+                                        "meisterschaft_data": st.session_state.meisterschaft_data if st.session_state.get("use_meisterschaft", False) else {},
                                     }
 
                                     # Template-spezifische Konfigurationen eintragen
